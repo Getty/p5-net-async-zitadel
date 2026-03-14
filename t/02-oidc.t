@@ -74,25 +74,44 @@ sub _discovery {
     }
 }
 
-# --- Discovery caching ---
+# --- Discovery caching and TTL ---
 
 {
-    my $http = Local::MockHTTP->new(_ok(_discovery()));
+    my $http = Local::MockHTTP->new(
+        _ok(_discovery()),
+        _ok(_discovery()),
+    );
 
     my $oidc = Net::Async::Zitadel::OIDC->new(
-        issuer => 'https://zitadel.example.com',
-        http   => $http,
+        issuer        => 'https://zitadel.example.com',
+        http          => $http,
+        discovery_ttl => 3600,
     );
 
     my $doc = $oidc->discovery_f->get;
     is $doc->{token_endpoint}, 'https://zitadel.example.com/oauth/v2/token',
         'discovery_f returns parsed document';
 
-    # Second call uses cache
+    # Second call within TTL uses cache
     my $doc2 = $oidc->discovery_f->get;
-    is scalar @{ $http->calls }, 1, 'discovery fetched exactly once (cached)';
+    is scalar @{ $http->calls }, 1, 'discovery fetched exactly once within TTL';
     is $doc2->{jwks_uri}, 'https://zitadel.example.com/oauth/v2/keys',
         'cached discovery has jwks_uri';
+
+    # Simulate TTL expiry
+    $oidc->_discovery_expires(time() - 1);
+    my $doc3 = $oidc->discovery_f->get;
+    is scalar @{ $http->calls }, 2, 'discovery re-fetched after TTL expiry';
+
+    # TTL=0 disables caching
+    my $oidc2 = Net::Async::Zitadel::OIDC->new(
+        issuer        => 'https://zitadel.example.com',
+        http          => Local::MockHTTP->new(_ok(_discovery()), _ok(_discovery())),
+        discovery_ttl => 0,
+    );
+    $oidc2->discovery_f->get;
+    $oidc2->discovery_f->get;
+    is scalar @{ $oidc2->http->calls }, 2, 'discovery_ttl=0 disables caching';
 }
 
 # --- JWKS caching and force_refresh ---

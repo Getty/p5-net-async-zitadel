@@ -1,0 +1,10 @@
+Revision history for Net-Async-Zitadel
+
+{{$NEXT}}
+
+  - Initial release
+  - Async OIDC client: discovery, JWKS, token verification, userinfo, introspection, token endpoint
+  - Async Management API: users, projects, apps, service users, machine keys, metadata, orgs
+  - TTL-based caching for discovery (1h) and JWKS (5min), configurable
+  - JWKS in-flight coalescing to prevent concurrent refresh race conditions
+  - Structured exception hierarchy (Net::Async::Zitadel::Error)

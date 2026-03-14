@@ -31,14 +31,46 @@ has http => (
     doc      => 'Net::Async::HTTP instance (shared from parent)',
 );
 
+=attr discovery_ttl
+
+How many seconds to cache the OpenID Connect discovery document before
+re-fetching. Default: C<3600> (one hour). Set to C<0> to disable caching.
+
+=attr jwks_ttl
+
+How many seconds to cache the JSON Web Key Set before re-fetching. Default:
+C<300> (five minutes). Set to C<0> to disable caching.
+
+=cut
+
+has discovery_ttl => (
+    is      => 'ro',
+    default => 3600,
+);
+
+has jwks_ttl => (
+    is      => 'ro',
+    default => 300,
+);
+
 has _discovery_cache => (
     is      => 'rw',
     default => sub { undef },
 );
 
+has _discovery_expires => (
+    is      => 'rw',
+    default => sub { 0 },
+);
+
 has _jwks_cache => (
     is      => 'rw',
     default => sub { undef },
+);
+
+has _jwks_expires => (
+    is      => 'rw',
+    default => sub { 0 },
 );
 
 # Stores the in-flight JWKS Future to coalesce concurrent refresh requests.
@@ -52,7 +84,7 @@ has _jwks_inflight => (
 sub discovery_f {
     my ($self) = @_;
 
-    if ($self->_discovery_cache) {
+    if ($self->_discovery_cache && time() < $self->_discovery_expires) {
         return Future->done($self->_discovery_cache);
     }
 
@@ -67,6 +99,7 @@ sub discovery_f {
         }
         my $doc = decode_json($response->decoded_content);
         $self->_discovery_cache($doc);
+        $self->_discovery_expires(time() + $self->discovery_ttl);
         return Future->done($doc);
     });
 }
@@ -77,7 +110,7 @@ sub jwks_f {
     my ($self, %args) = @_;
     my $force = $args{force_refresh} // 0;
 
-    if (!$force && $self->_jwks_cache) {
+    if (!$force && $self->_jwks_cache && time() < $self->_jwks_expires) {
         return Future->done($self->_jwks_cache);
     }
 
@@ -103,6 +136,7 @@ sub jwks_f {
         }
         my $jwks = decode_json($response->decoded_content);
         $self->_jwks_cache($jwks);
+        $self->_jwks_expires(time() + $self->jwks_ttl);
         $self->_jwks_inflight(undef);
         return Future->done($jwks);
     })->on_fail(sub {
