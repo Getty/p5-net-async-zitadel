@@ -470,6 +470,68 @@ sub list_user_grants_f {
     });
 }
 
+# --- Identity Providers (IDPs) ---
+
+sub list_idps_f {
+    my ($self, %args) = @_;
+    $self->_post_f('/idps/_search', {
+        query => {
+            offset => $args{offset} // 0,
+            limit  => $args{limit}  // 100,
+        },
+        $args{queries} ? (queries => $args{queries}) : (),
+    });
+}
+
+sub get_idp_f {
+    my ($self, $idp_id) = @_;
+    $idp_id or _require('idp_id required');
+    $self->_get_f("/idps/$idp_id");
+}
+
+sub create_oidc_idp_f {
+    my ($self, %args) = @_;
+    $self->_post_f('/idps/oidc', {
+        name         => $args{name}          // _require('name required'),
+        clientId     => $args{client_id}     // _require('client_id required'),
+        clientSecret => $args{client_secret} // _require('client_secret required'),
+        issuer       => $args{issuer}        // _require('issuer required'),
+        scopes       => $args{scopes}        // ['openid', 'profile', 'email'],
+        $args{display_name_mapping} ? (displayNameMapping => $args{display_name_mapping}) : (),
+        $args{username_mapping}     ? (usernameMapping    => $args{username_mapping})     : (),
+        $args{auto_register}        ? (autoRegister       => $args{auto_register})        : (),
+    });
+}
+
+sub update_idp_f {
+    my ($self, $idp_id, %args) = @_;
+    $idp_id or _require('idp_id required');
+    $self->_put_f("/idps/$idp_id", {
+        name => $args{name} // _require('name required'),
+        $args{display_name_mapping} ? (displayNameMapping => $args{display_name_mapping}) : (),
+        $args{username_mapping}     ? (usernameMapping    => $args{username_mapping})     : (),
+        $args{auto_register}        ? (autoRegister       => $args{auto_register})        : (),
+    });
+}
+
+sub delete_idp_f {
+    my ($self, $idp_id) = @_;
+    $idp_id or _require('idp_id required');
+    $self->_delete_f("/idps/$idp_id");
+}
+
+sub activate_idp_f {
+    my ($self, $idp_id) = @_;
+    $idp_id or _require('idp_id required');
+    $self->_post_f("/idps/$idp_id/_activate", {});
+}
+
+sub deactivate_idp_f {
+    my ($self, $idp_id) = @_;
+    $idp_id or _require('idp_id required');
+    $self->_post_f("/idps/$idp_id/_deactivate", {});
+}
+
 1;
 
 __END__

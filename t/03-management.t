@@ -379,4 +379,57 @@ sub _recorder {
         qr/user_id required/, 'create_user_grant_f validates user_id';
 }
 
+# --- Identity Providers ---
+
+{
+    my $m = _recorder();
+
+    $m->create_oidc_idp_f(
+        name          => 'Google',
+        client_id     => 'gid',
+        client_secret => 'gsecret',
+        issuer        => 'https://accounts.google.com',
+        scopes        => ['openid', 'email'],
+        auto_register => 1,
+    );
+    $m->list_idps_f(limit => 5);
+    $m->get_idp_f('idp1');
+    $m->update_idp_f('idp1', name => 'Google Updated');
+    $m->activate_idp_f('idp1');
+    $m->deactivate_idp_f('idp1');
+    $m->delete_idp_f('idp1');
+
+    my $c = $m->calls;
+
+    is $c->[0][0], 'POST', 'create_oidc_idp_f uses POST';
+    is $c->[0][1], '/idps/oidc', 'create_oidc_idp_f path';
+    is $c->[0][2]{name}, 'Google', 'create_oidc_idp_f name';
+    is $c->[0][2]{clientId}, 'gid', 'create_oidc_idp_f clientId';
+    is $c->[0][2]{clientSecret}, 'gsecret', 'create_oidc_idp_f clientSecret';
+    is $c->[0][2]{issuer}, 'https://accounts.google.com', 'create_oidc_idp_f issuer';
+    is_deeply $c->[0][2]{scopes}, ['openid', 'email'], 'create_oidc_idp_f scopes';
+    ok $c->[0][2]{autoRegister}, 'create_oidc_idp_f auto_register -> autoRegister';
+
+    is $c->[1][1], '/idps/_search', 'list_idps_f path';
+    is $c->[1][2]{query}{limit}, 5, 'list_idps_f limit';
+
+    is_deeply $c->[2], ['GET', '/idps/idp1', undef], 'get_idp_f path';
+
+    is $c->[3][0], 'PUT', 'update_idp_f uses PUT';
+    is $c->[3][1], '/idps/idp1', 'update_idp_f path';
+    is $c->[3][2]{name}, 'Google Updated', 'update_idp_f name';
+
+    is_deeply $c->[4], ['POST', '/idps/idp1/_activate',   {}], 'activate_idp_f path';
+    is_deeply $c->[5], ['POST', '/idps/idp1/_deactivate', {}], 'deactivate_idp_f path';
+    is_deeply $c->[6], ['DELETE', '/idps/idp1', undef],        'delete_idp_f path';
+
+    throws_ok { $m->create_oidc_idp_f(client_id => 'x', client_secret => 'y', issuer => 'z') }
+        qr/name required/, 'create_oidc_idp_f validates name';
+    throws_ok { $m->create_oidc_idp_f(name => 'n', client_secret => 'y', issuer => 'z') }
+        qr/client_id required/, 'create_oidc_idp_f validates client_id';
+    throws_ok { $m->get_idp_f(undef) }    qr/idp_id required/, 'get_idp_f validates idp_id';
+    throws_ok { $m->delete_idp_f(undef) } qr/idp_id required/, 'delete_idp_f validates idp_id';
+    throws_ok { $m->update_idp_f('i1') }  qr/name required/,   'update_idp_f validates name';
+}
+
 done_testing;
