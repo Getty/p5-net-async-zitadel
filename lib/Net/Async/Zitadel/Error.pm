@@ -8,7 +8,7 @@ use Moo;
 # operator stub installed by 'use overload' below.
 use overload '""' => sub { $_[0]->message }, fallback => 1;
 
-our $VERSION = '0.001';
+our $VERSION = '0.002';
 
 =attr message
 

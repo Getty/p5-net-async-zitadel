@@ -11,7 +11,7 @@ use Future;
 use Net::Async::Zitadel::Error;
 use namespace::clean;
 
-our $VERSION = '0.001';
+our $VERSION = '0.002';
 
 has base_url => (
     is       => 'ro',

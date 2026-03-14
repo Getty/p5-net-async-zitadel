@@ -11,7 +11,7 @@ use namespace::clean;
 
 extends 'IO::Async::Notifier';
 
-our $VERSION = '0.001';
+our $VERSION = '0.002';
 
 has issuer => (
     is       => 'ro',
