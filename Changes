@@ -1,6 +1,6 @@
 Revision history for Net-Async-Zitadel
 
-{{$NEXT}}
+0.001     2026-03-14 05:01:52Z
 
   - Initial release
   - Async OIDC client (Net::Async::Zitadel::OIDC):
