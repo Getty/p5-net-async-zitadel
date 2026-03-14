@@ -2,29 +2,34 @@
 
 ## OIDC Implementation
 
-- [ ] Implement `introspect_f` — POST form-encoded to introspection endpoint via Net::Async::HTTP
-- [ ] Implement `token_f` — POST form-encoded to token endpoint via Net::Async::HTTP
-- [ ] `client_credentials_token_f`, `refresh_token_f`, `exchange_authorization_code_f` depend on `token_f`
+- [x] Implement `introspect_f` — POST form-encoded to introspection endpoint via Net::Async::HTTP
+- [x] Implement `token_f` — POST form-encoded to token endpoint via Net::Async::HTTP
+- [x] `client_credentials_token_f`, `refresh_token_f`, `exchange_authorization_code_f` depend on `token_f`
 - [ ] Discovery caching with TTL (currently cached forever)
 - [ ] JWKS caching with TTL
 
 ## Management API
 
-- [ ] All Management methods are implemented and functional (they use `_request_f` which is complete)
-- [ ] Verify error handling matches WWW::Zitadel behavior
+- [x] All Management methods implemented and functional (using `_request_f`)
+- [x] Error handling uses `Net::Async::Zitadel::Error` typed exceptions, matching WWW::Zitadel behavior
+- [x] Missing endpoints from initial impl added: service users, machine keys, password,
+      metadata, org operations (create/list/update/deactivate), update_oidc_app camelCase fix
+- [x] `BUILD` validation for empty `base_url` and `issuer`
 
 ## Test Suite
 
-- [ ] Unit tests for OIDC discovery/JWKS (mock HTTP responses)
-- [ ] Unit tests for token verification (use test JWTs)
-- [ ] Unit tests for Management API methods (mock HTTP responses)
+- [x] Unit tests for OIDC discovery/JWKS caching (mock HTTP responses, t/02-oidc.t)
+- [x] Unit tests for token verification with JWKS retry (mock decoder)
+- [x] Unit tests for Management API methods — paths, payload shapes, validation (t/03-management.t)
 - [ ] Integration tests against a live Zitadel instance (behind env guard)
-- [ ] Test Future failure paths (HTTP errors, JSON parse errors, missing fields)
+- [x] Test Future failure paths (HTTP errors, JSON parse errors, missing fields)
+- [x] Network timeout: pending Future stays non-ready without premature exception (t/02-oidc.t)
+- [x] Concurrent JWKS refresh coalescing — race condition prevention (t/02-oidc.t)
+- [x] In-flight slot cleared correctly after synchronous failure
 
 ## Documentation
 
-- [ ] POD for all public methods (skeletons in place)
-- [ ] SYNOPSIS examples for each module
+- [x] POD for all public methods with SYNOPSIS and DESCRIPTION
 - [ ] Cookbook/examples directory
 
 ## Examples

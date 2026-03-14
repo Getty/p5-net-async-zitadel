@@ -5,8 +5,10 @@ package Net::Async::Zitadel::Management;
 use Moo;
 use JSON::MaybeXS qw(encode_json decode_json);
 use HTTP::Request;
+use MIME::Base64 qw(encode_base64);
 use URI;
 use Future;
+use Net::Async::Zitadel::Error;
 use namespace::clean;
 
 our $VERSION = '0.001';
@@ -36,6 +38,15 @@ has _api_base => (
     },
 );
 
+sub BUILD {
+    my $self = shift;
+    die Net::Async::Zitadel::Error::Validation->new(
+        message => 'base_url must not be empty',
+    ) unless length $self->base_url;
+}
+
+sub _require { die Net::Async::Zitadel::Error::Validation->new(message => $_[0]) }
+
 # --- Generic async request methods ---
 
 sub _request_f {
@@ -59,11 +70,14 @@ sub _request_f {
         }
 
         unless ($response->is_success) {
-            my $msg = "API error: " . $response->status_line;
-            if ($data && $data->{message}) {
-                $msg .= " - $data->{message}";
-            }
-            return Future->fail("$msg\n");
+            my $api_msg = $data && $data->{message} ? $data->{message} : undef;
+            my $msg = 'API error: ' . $response->status_line;
+            $msg .= " - $api_msg" if $api_msg;
+            return Future->fail(Net::Async::Zitadel::Error::API->new(
+                message     => $msg,
+                http_status => $response->status_line,
+                api_message => $api_msg,
+            ));
         }
 
         return Future->done($data // {});
@@ -91,23 +105,23 @@ sub list_users_f {
 
 sub get_user_f {
     my ($self, $user_id) = @_;
-    die "user_id required\n" unless $user_id;
+    $user_id or _require('user_id required');
     $self->_get_f("/users/$user_id");
 }
 
 sub create_human_user_f {
     my ($self, %args) = @_;
     $self->_post_f('/users/human', {
-        userName => $args{user_name} // die("user_name required\n"),
+        userName => $args{user_name}  // _require('user_name required'),
         profile  => {
-            firstName   => $args{first_name} // die("first_name required\n"),
-            lastName    => $args{last_name}  // die("last_name required\n"),
+            firstName   => $args{first_name}   // _require('first_name required'),
+            lastName    => $args{last_name}    // _require('last_name required'),
             displayName => $args{display_name} // "$args{first_name} $args{last_name}",
             $args{nick_name}          ? (nickName          => $args{nick_name})          : (),
             $args{preferred_language} ? (preferredLanguage => $args{preferred_language}) : (),
         },
         email => {
-            email           => $args{email} // die("email required\n"),
+            email           => $args{email} // _require('email required'),
             isEmailVerified => $args{email_verified} // JSON::MaybeXS::false,
         },
         $args{phone} ? (phone => {
@@ -120,7 +134,7 @@ sub create_human_user_f {
 
 sub update_user_f {
     my ($self, $user_id, %args) = @_;
-    die "user_id required\n" unless $user_id;
+    $user_id or _require('user_id required');
     $self->_put_f("/users/$user_id/profile", {
         $args{first_name}   ? (firstName   => $args{first_name})   : (),
         $args{last_name}    ? (lastName    => $args{last_name})    : (),
@@ -131,20 +145,134 @@ sub update_user_f {
 
 sub deactivate_user_f {
     my ($self, $user_id) = @_;
-    die "user_id required\n" unless $user_id;
+    $user_id or _require('user_id required');
     $self->_post_f("/users/$user_id/_deactivate", {});
 }
 
 sub reactivate_user_f {
     my ($self, $user_id) = @_;
-    die "user_id required\n" unless $user_id;
+    $user_id or _require('user_id required');
     $self->_post_f("/users/$user_id/_reactivate", {});
 }
 
 sub delete_user_f {
     my ($self, $user_id) = @_;
-    die "user_id required\n" unless $user_id;
+    $user_id or _require('user_id required');
     $self->_delete_f("/users/$user_id");
+}
+
+# --- Service / machine users ---
+
+sub create_service_user_f {
+    my ($self, %args) = @_;
+    $self->_post_f('/users/machine', {
+        userName    => $args{user_name} // _require('user_name required'),
+        name        => $args{name}      // _require('name required'),
+        $args{description} ? (description => $args{description}) : (),
+    });
+}
+
+sub list_service_users_f {
+    my ($self, %args) = @_;
+    $self->_post_f('/users/_search', {
+        query => {
+            offset => $args{offset} // 0,
+            limit  => $args{limit}  // 100,
+            asc    => $args{asc}    // JSON::MaybeXS::true,
+        },
+        queries => [
+            { typeQuery => { type => 'TYPE_MACHINE' } },
+            @{ $args{queries} // [] },
+        ],
+    });
+}
+
+sub get_service_user_f {
+    my ($self, $user_id) = @_;
+    $user_id or _require('user_id required');
+    $self->_get_f("/users/$user_id");
+}
+
+sub delete_service_user_f {
+    my ($self, $user_id) = @_;
+    $user_id or _require('user_id required');
+    $self->_delete_f("/users/$user_id");
+}
+
+# --- Machine keys (JWT auth for service users) ---
+
+sub add_machine_key_f {
+    my ($self, $user_id, %args) = @_;
+    $user_id or _require('user_id required');
+    $self->_post_f("/users/$user_id/keys", {
+        type => $args{type} // 'KEY_TYPE_JSON',
+        $args{expiration_date} ? (expirationDate => $args{expiration_date}) : (),
+    });
+}
+
+sub list_machine_keys_f {
+    my ($self, $user_id, %args) = @_;
+    $user_id or _require('user_id required');
+    $self->_post_f("/users/$user_id/keys/_search", {
+        query => {
+            offset => $args{offset} // 0,
+            limit  => $args{limit}  // 100,
+        },
+    });
+}
+
+sub remove_machine_key_f {
+    my ($self, $user_id, $key_id) = @_;
+    $user_id or _require('user_id required');
+    $key_id  or _require('key_id required');
+    $self->_delete_f("/users/$user_id/keys/$key_id");
+}
+
+# --- Password management ---
+
+sub set_password_f {
+    my ($self, $user_id, %args) = @_;
+    $user_id or _require('user_id required');
+    $self->_post_f("/users/$user_id/password", {
+        password        => $args{password} // _require('password required'),
+        $args{change_required} ? (changeRequired => $args{change_required}) : (),
+    });
+}
+
+sub request_password_reset_f {
+    my ($self, $user_id) = @_;
+    $user_id or _require('user_id required');
+    $self->_post_f("/users/$user_id/_reset_password", {});
+}
+
+# --- User metadata ---
+
+sub set_user_metadata_f {
+    my ($self, $user_id, $key, $value) = @_;
+    $user_id       or _require('user_id required');
+    $key           or _require('key required');
+    defined $value or _require('value required');
+    $self->_post_f("/users/$user_id/metadata/$key", {
+        value => encode_base64($value, ''),
+    });
+}
+
+sub get_user_metadata_f {
+    my ($self, $user_id, $key) = @_;
+    $user_id or _require('user_id required');
+    $key     or _require('key required');
+    $self->_get_f("/users/$user_id/metadata/$key");
+}
+
+sub list_user_metadata_f {
+    my ($self, $user_id, %args) = @_;
+    $user_id or _require('user_id required');
+    $self->_post_f("/users/$user_id/metadata/_search", {
+        query => {
+            offset => $args{offset} // 0,
+            limit  => $args{limit}  // 100,
+        },
+    });
 }
 
 # --- Projects ---
@@ -162,14 +290,14 @@ sub list_projects_f {
 
 sub get_project_f {
     my ($self, $project_id) = @_;
-    die "project_id required\n" unless $project_id;
+    $project_id or _require('project_id required');
     $self->_get_f("/projects/$project_id");
 }
 
 sub create_project_f {
     my ($self, %args) = @_;
     $self->_post_f('/projects', {
-        name => $args{name} // die("name required\n"),
+        name => $args{name} // _require('name required'),
         $args{project_role_assertion}   ? (projectRoleAssertion   => $args{project_role_assertion})   : (),
         $args{project_role_check}       ? (projectRoleCheck       => $args{project_role_check})       : (),
         $args{has_project_check}        ? (hasProjectCheck        => $args{has_project_check})        : (),
@@ -179,9 +307,9 @@ sub create_project_f {
 
 sub update_project_f {
     my ($self, $project_id, %args) = @_;
-    die "project_id required\n" unless $project_id;
+    $project_id or _require('project_id required');
     $self->_put_f("/projects/$project_id", {
-        name => $args{name} // die("name required\n"),
+        name => $args{name} // _require('name required'),
         $args{project_role_assertion}   ? (projectRoleAssertion   => $args{project_role_assertion})   : (),
         $args{project_role_check}       ? (projectRoleCheck       => $args{project_role_check})       : (),
         $args{has_project_check}        ? (hasProjectCheck        => $args{has_project_check})        : (),
@@ -191,7 +319,7 @@ sub update_project_f {
 
 sub delete_project_f {
     my ($self, $project_id) = @_;
-    die "project_id required\n" unless $project_id;
+    $project_id or _require('project_id required');
     $self->_delete_f("/projects/$project_id");
 }
 
@@ -199,7 +327,7 @@ sub delete_project_f {
 
 sub list_apps_f {
     my ($self, $project_id, %args) = @_;
-    die "project_id required\n" unless $project_id;
+    $project_id or _require('project_id required');
     $self->_post_f("/projects/$project_id/apps/_search", {
         query => {
             offset => $args{offset} // 0,
@@ -211,39 +339,51 @@ sub list_apps_f {
 
 sub get_app_f {
     my ($self, $project_id, $app_id) = @_;
-    die "project_id required\n" unless $project_id;
-    die "app_id required\n" unless $app_id;
+    $project_id or _require('project_id required');
+    $app_id     or _require('app_id required');
     $self->_get_f("/projects/$project_id/apps/$app_id");
 }
 
 sub create_oidc_app_f {
     my ($self, $project_id, %args) = @_;
-    die "project_id required\n" unless $project_id;
+    $project_id or _require('project_id required');
     $self->_post_f("/projects/$project_id/apps/oidc", {
-        name                  => $args{name} // die("name required\n"),
-        redirectUris          => $args{redirect_uris} // die("redirect_uris required\n"),
+        name                  => $args{name}          // _require('name required'),
+        redirectUris          => $args{redirect_uris} // _require('redirect_uris required'),
         responseTypes         => $args{response_types} // ['OIDC_RESPONSE_TYPE_CODE'],
-        grantTypes            => $args{grant_types} // ['OIDC_GRANT_TYPE_AUTHORIZATION_CODE'],
-        appType               => $args{app_type} // 'OIDC_APP_TYPE_WEB',
-        authMethodType        => $args{auth_method} // 'OIDC_AUTH_METHOD_TYPE_BASIC',
+        grantTypes            => $args{grant_types}    // ['OIDC_GRANT_TYPE_AUTHORIZATION_CODE'],
+        appType               => $args{app_type}       // 'OIDC_APP_TYPE_WEB',
+        authMethodType        => $args{auth_method}    // 'OIDC_AUTH_METHOD_TYPE_BASIC',
         $args{post_logout_uris}        ? (postLogoutRedirectUris => $args{post_logout_uris})        : (),
         $args{dev_mode}                ? (devMode                => $args{dev_mode})                : (),
         $args{access_token_type}       ? (accessTokenType        => $args{access_token_type})       : (),
         $args{id_token_role_assertion} ? (idTokenRoleAssertion   => $args{id_token_role_assertion}) : (),
+        $args{additional_origins}      ? (additionalOrigins      => $args{additional_origins})      : (),
     });
 }
 
 sub update_oidc_app_f {
     my ($self, $project_id, $app_id, %args) = @_;
-    die "project_id required\n" unless $project_id;
-    die "app_id required\n" unless $app_id;
-    $self->_put_f("/projects/$project_id/apps/$app_id/oidc_config", \%args);
+    $project_id or _require('project_id required');
+    $app_id     or _require('app_id required');
+    $self->_put_f("/projects/$project_id/apps/$app_id/oidc_config", {
+        $args{redirect_uris}           ? (redirectUris            => $args{redirect_uris})           : (),
+        $args{response_types}          ? (responseTypes           => $args{response_types})          : (),
+        $args{grant_types}             ? (grantTypes              => $args{grant_types})             : (),
+        $args{app_type}                ? (appType                 => $args{app_type})                : (),
+        $args{auth_method}             ? (authMethodType          => $args{auth_method})             : (),
+        $args{post_logout_uris}        ? (postLogoutRedirectUris  => $args{post_logout_uris})        : (),
+        $args{dev_mode}                ? (devMode                 => $args{dev_mode})                : (),
+        $args{access_token_type}       ? (accessTokenType         => $args{access_token_type})       : (),
+        $args{id_token_role_assertion} ? (idTokenRoleAssertion    => $args{id_token_role_assertion}) : (),
+        $args{additional_origins}      ? (additionalOrigins       => $args{additional_origins})      : (),
+    });
 }
 
 sub delete_app_f {
     my ($self, $project_id, $app_id) = @_;
-    die "project_id required\n" unless $project_id;
-    die "app_id required\n" unless $app_id;
+    $project_id or _require('project_id required');
+    $app_id     or _require('app_id required');
     $self->_delete_f("/projects/$project_id/apps/$app_id");
 }
 
@@ -254,13 +394,43 @@ sub get_org_f {
     $self->_get_f('/orgs/me');
 }
 
+sub create_org_f {
+    my ($self, %args) = @_;
+    $self->_post_f('/orgs', {
+        name => $args{name} // _require('name required'),
+    });
+}
+
+sub list_orgs_f {
+    my ($self, %args) = @_;
+    $self->_post_f('/orgs/_search', {
+        query => {
+            offset => $args{offset} // 0,
+            limit  => $args{limit}  // 100,
+        },
+        $args{queries} ? (queries => $args{queries}) : (),
+    });
+}
+
+sub update_org_f {
+    my ($self, %args) = @_;
+    $self->_put_f('/orgs/me', {
+        name => $args{name} // _require('name required'),
+    });
+}
+
+sub deactivate_org_f {
+    my ($self) = @_;
+    $self->_post_f('/orgs/me/_deactivate', {});
+}
+
 # --- Roles ---
 
 sub add_project_role_f {
     my ($self, $project_id, %args) = @_;
-    die "project_id required\n" unless $project_id;
+    $project_id or _require('project_id required');
     $self->_post_f("/projects/$project_id/roles", {
-        roleKey     => $args{role_key} // die("role_key required\n"),
+        roleKey     => $args{role_key} // _require('role_key required'),
         displayName => $args{display_name} // $args{role_key},
         $args{group} ? (group => $args{group}) : (),
     });
@@ -268,7 +438,7 @@ sub add_project_role_f {
 
 sub list_project_roles_f {
     my ($self, $project_id, %args) = @_;
-    die "project_id required\n" unless $project_id;
+    $project_id or _require('project_id required');
     $self->_post_f("/projects/$project_id/roles/_search", {
         query => {
             offset => $args{offset} // 0,
@@ -282,10 +452,10 @@ sub list_project_roles_f {
 
 sub create_user_grant_f {
     my ($self, %args) = @_;
-    my $user_id = $args{user_id} // die "user_id required\n";
+    my $user_id = $args{user_id} // _require('user_id required');
     $self->_post_f("/users/$user_id/grants", {
-        projectId  => $args{project_id} // die("project_id required\n"),
-        roleKeys   => $args{role_keys}  // die("role_keys required\n"),
+        projectId => $args{project_id} // _require('project_id required'),
+        roleKeys  => $args{role_keys}  // _require('role_keys required'),
     });
 }
 
@@ -316,110 +486,21 @@ __END__
     );
     $loop->add($z);
 
-    # Users
-    my $users = $z->management->list_users_f(limit => 50)->get;
-    my $user  = $z->management->create_human_user_f(
+    my $user = $z->management->create_human_user_f(
         user_name  => 'alice',
         first_name => 'Alice',
         last_name  => 'Smith',
         email      => 'alice@example.com',
     )->get;
 
-    # Projects
-    my $projects = $z->management->list_projects_f->get;
-
-    # OIDC Applications
-    my $app = $z->management->create_oidc_app_f($project_id,
-        name          => 'Web Client',
-        redirect_uris => ['https://app.example.com/callback'],
-    )->get;
-
-    # Roles & Grants
-    $z->management->add_project_role_f($project_id,
-        role_key => 'admin',
-    )->get;
-
-    $z->management->create_user_grant_f(
-        user_id    => $user_id,
-        project_id => $project_id,
-        role_keys  => ['admin'],
-    )->get;
-
 =head1 DESCRIPTION
 
-Async client for the Zitadel Management API v1, built on L<Net::Async::HTTP>
-and L<Future>. All methods return L<Future> objects (C<_f> suffix convention).
+Async client for the Zitadel Management API v1. All methods have the C<_f>
+suffix and return L<Future> objects. Mirrors the full API surface of
+L<WWW::Zitadel::Management>.
 
-Mirrors the API surface of L<WWW::Zitadel::Management> but with non-blocking
-HTTP via L<Net::Async::HTTP>.
-
-=attr base_url
-
-Required. The Zitadel instance URL.
-
-=attr token
-
-Required. Personal Access Token for authenticating with the Management API.
-
-=attr http
-
-Required. A L<Net::Async::HTTP> instance (typically shared from L<Net::Async::Zitadel>).
-
-=method list_users_f
-
-=method get_user_f
-
-=method create_human_user_f
-
-=method update_user_f
-
-=method deactivate_user_f
-
-=method reactivate_user_f
-
-=method delete_user_f
-
-User CRUD operations. All return Futures.
-
-=method list_projects_f
-
-=method get_project_f
-
-=method create_project_f
-
-=method update_project_f
-
-=method delete_project_f
-
-Project CRUD operations. All return Futures.
-
-=method list_apps_f
-
-=method get_app_f
-
-=method create_oidc_app_f
-
-=method update_oidc_app_f
-
-=method delete_app_f
-
-OIDC application management. All return Futures.
-
-=method get_org_f
-
-Returns a Future resolving to the current organization.
-
-=method add_project_role_f
-
-=method list_project_roles_f
-
-Role management. All return Futures.
-
-=method create_user_grant_f
-
-=method list_user_grants_f
-
-User grant (role assignment) management. All return Futures.
+Errors are thrown (or returned as failed Futures) as
+L<Net::Async::Zitadel::Error> objects that stringify to their C<message>.
 
 =head1 SEE ALSO
 

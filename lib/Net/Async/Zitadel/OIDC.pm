@@ -5,8 +5,10 @@ package Net::Async::Zitadel::OIDC;
 use Moo;
 use Crypt::JWT qw(decode_jwt);
 use JSON::MaybeXS qw(decode_json);
+use HTTP::Request;
 use URI;
 use Future;
+use Net::Async::Zitadel::Error;
 use namespace::clean;
 
 our $VERSION = '0.001';
@@ -15,6 +17,13 @@ has issuer => (
     is       => 'ro',
     required => 1,
 );
+
+sub BUILD {
+    my $self = shift;
+    die Net::Async::Zitadel::Error::Validation->new(
+        message => 'issuer must not be empty',
+    ) unless length $self->issuer;
+}
 
 has http => (
     is       => 'ro',
@@ -28,6 +37,12 @@ has _discovery_cache => (
 );
 
 has _jwks_cache => (
+    is      => 'rw',
+    default => sub { undef },
+);
+
+# Stores the in-flight JWKS Future to coalesce concurrent refresh requests.
+has _jwks_inflight => (
     is      => 'rw',
     default => sub { undef },
 );
@@ -46,7 +61,9 @@ sub discovery_f {
     return $self->http->GET(URI->new($url))->then(sub {
         my ($response) = @_;
         unless ($response->is_success) {
-            return Future->fail("Discovery failed: " . $response->status_line . "\n");
+            return Future->fail(Net::Async::Zitadel::Error::Network->new(
+                message => 'Discovery failed: ' . $response->status_line,
+            ));
         }
         my $doc = decode_json($response->decoded_content);
         $self->_discovery_cache($doc);
@@ -64,34 +81,57 @@ sub jwks_f {
         return Future->done($self->_jwks_cache);
     }
 
-    return $self->discovery_f->then(sub {
+    # Coalesce concurrent JWKS refreshes: if a fetch is already in-flight,
+    # return the same Future rather than issuing a second HTTP request.
+    if (!$force && $self->_jwks_inflight) {
+        return $self->_jwks_inflight;
+    }
+
+    my $f = $self->discovery_f->then(sub {
         my ($doc) = @_;
         my $jwks_uri = $doc->{jwks_uri}
-            // return Future->fail("No jwks_uri in discovery document\n");
+            // return Future->fail(Net::Async::Zitadel::Error::Validation->new(
+                message => 'No jwks_uri in discovery document',
+            ));
         return $self->http->GET(URI->new($jwks_uri));
     })->then(sub {
         my ($response) = @_;
         unless ($response->is_success) {
-            return Future->fail("JWKS fetch failed: " . $response->status_line . "\n");
+            return Future->fail(Net::Async::Zitadel::Error::Network->new(
+                message => 'JWKS fetch failed: ' . $response->status_line,
+            ));
         }
         my $jwks = decode_json($response->decoded_content);
         $self->_jwks_cache($jwks);
+        $self->_jwks_inflight(undef);
         return Future->done($jwks);
+    })->on_fail(sub {
+        $self->_jwks_inflight(undef);
     });
+
+    # Only store the in-flight Future if it is still pending.
+    # Synchronous (already-resolved) chains must not be stored, because
+    # the on_fail/on_done clearing inside the chain already ran before we
+    # reach this line, and storing $f here would re-populate the slot.
+    $self->_jwks_inflight($f) unless $force || $f->is_ready;
+    return $f;
 }
 
 # --- Token verification ---
 
 sub verify_token_f {
     my ($self, $token, %args) = @_;
-    die "No token provided\n" unless defined $token;
+
+    return Future->fail(Net::Async::Zitadel::Error::Validation->new(
+        message => 'No token provided',
+    )) unless defined $token;
 
     return $self->jwks_f->then(sub {
         my ($jwks) = @_;
 
         my $claims;
         eval {
-            $claims = decode_jwt(
+            $claims = $self->_decode_jwt(
                 token            => $token,
                 kid_keys         => $jwks,
                 verify_exp       => $args{verify_exp} // 1,
@@ -106,7 +146,7 @@ sub verify_token_f {
             # Key rotation: refresh JWKS and retry once
             return $self->jwks_f(force_refresh => 1)->then(sub {
                 my ($fresh_jwks) = @_;
-                my $retry_claims = decode_jwt(
+                my $retry_claims = $self->_decode_jwt(
                     token            => $token,
                     kid_keys         => $fresh_jwks,
                     verify_exp       => $args{verify_exp} // 1,
@@ -127,24 +167,35 @@ sub verify_token_f {
     });
 }
 
+sub _decode_jwt {
+    my ($self, %args) = @_;
+    return decode_jwt(%args);
+}
+
 # --- UserInfo ---
 
 sub userinfo_f {
     my ($self, $access_token) = @_;
-    die "No access token provided\n" unless defined $access_token;
+
+    return Future->fail(Net::Async::Zitadel::Error::Validation->new(
+        message => 'No access token provided',
+    )) unless defined $access_token;
 
     return $self->discovery_f->then(sub {
         my ($doc) = @_;
         my $endpoint = $doc->{userinfo_endpoint}
-            // return Future->fail("No userinfo_endpoint in discovery document\n");
-        return $self->http->GET(
-            URI->new($endpoint),
-            headers => { Authorization => "Bearer $access_token" },
-        );
+            // return Future->fail(Net::Async::Zitadel::Error::Validation->new(
+                message => 'No userinfo_endpoint in discovery document',
+            ));
+        my $req = HTTP::Request->new(GET => $endpoint);
+        $req->header(Authorization => "Bearer $access_token");
+        return $self->http->do_request(request => $req);
     })->then(sub {
         my ($response) = @_;
         unless ($response->is_success) {
-            return Future->fail("UserInfo failed: " . $response->status_line . "\n");
+            return Future->fail(Net::Async::Zitadel::Error::Network->new(
+                message => 'UserInfo failed: ' . $response->status_line,
+            ));
         }
         return Future->done(decode_json($response->decoded_content));
     });
@@ -154,19 +205,43 @@ sub userinfo_f {
 
 sub introspect_f {
     my ($self, $token, %args) = @_;
-    die "No token provided\n" unless defined $token;
-    die "Introspection requires client_id and client_secret\n"
-        unless $args{client_id} && $args{client_secret};
+
+    return Future->fail(Net::Async::Zitadel::Error::Validation->new(
+        message => 'No token provided',
+    )) unless defined $token;
+
+    return Future->fail(Net::Async::Zitadel::Error::Validation->new(
+        message => 'Introspection requires client_id and client_secret',
+    )) unless $args{client_id} && $args{client_secret};
 
     return $self->discovery_f->then(sub {
         my ($doc) = @_;
         my $endpoint = $doc->{introspection_endpoint}
-            // return Future->fail("No introspection_endpoint in discovery document\n");
+            // return Future->fail(Net::Async::Zitadel::Error::Validation->new(
+                message => 'No introspection_endpoint in discovery document',
+            ));
 
-        # TODO: POST form-encoded request to introspection endpoint
-        # Fields: token, client_id, client_secret, token_type_hint
-        # Use $self->http->POST or ->do_request with form content
-        return Future->fail("introspect_f not yet implemented\n");
+        my $form = URI->new;
+        $form->query_form(
+            token           => $token,
+            client_id       => $args{client_id},
+            client_secret   => $args{client_secret},
+            token_type_hint => $args{token_type_hint} // 'access_token',
+        );
+
+        my $req = HTTP::Request->new(POST => $endpoint);
+        $req->header('Content-Type' => 'application/x-www-form-urlencoded');
+        $req->content($form->query);
+
+        return $self->http->do_request(request => $req);
+    })->then(sub {
+        my ($response) = @_;
+        unless ($response->is_success) {
+            return Future->fail(Net::Async::Zitadel::Error::Network->new(
+                message => 'Introspection failed: ' . $response->status_line,
+            ));
+        }
+        return Future->done(decode_json($response->decoded_content));
     });
 }
 
@@ -175,28 +250,49 @@ sub introspect_f {
 sub token_f {
     my ($self, %args) = @_;
 
-    my $grant_type = delete $args{grant_type}
-        // die "grant_type required\n";
+    my $grant_type = delete $args{grant_type};
+    return Future->fail(Net::Async::Zitadel::Error::Validation->new(
+        message => 'grant_type required',
+    )) unless defined $grant_type;
 
     return $self->discovery_f->then(sub {
         my ($doc) = @_;
         my $endpoint = $doc->{token_endpoint}
-            // return Future->fail("No token_endpoint in discovery document\n");
+            // return Future->fail(Net::Async::Zitadel::Error::Validation->new(
+                message => 'No token_endpoint in discovery document',
+            ));
 
-        # TODO: POST form-encoded request to token endpoint
-        # Fields: grant_type + remaining %args
-        # Use $self->http->POST or ->do_request with form content
-        return Future->fail("token_f not yet implemented\n");
+        my $form = URI->new;
+        $form->query_form(grant_type => $grant_type, %args);
+
+        my $req = HTTP::Request->new(POST => $endpoint);
+        $req->header('Content-Type' => 'application/x-www-form-urlencoded');
+        $req->content($form->query);
+
+        return $self->http->do_request(request => $req);
+    })->then(sub {
+        my ($response) = @_;
+        unless ($response->is_success) {
+            return Future->fail(Net::Async::Zitadel::Error::Network->new(
+                message => 'Token endpoint failed: ' . $response->status_line,
+            ));
+        }
+        return Future->done(decode_json($response->decoded_content));
     });
 }
 
 sub client_credentials_token_f {
     my ($self, %args) = @_;
 
-    my $client_id = delete $args{client_id}
-        // die "client_id required\n";
-    my $client_secret = delete $args{client_secret}
-        // die "client_secret required\n";
+    my $client_id = delete $args{client_id};
+    return Future->fail(Net::Async::Zitadel::Error::Validation->new(
+        message => 'client_id required',
+    )) unless defined $client_id;
+
+    my $client_secret = delete $args{client_secret};
+    return Future->fail(Net::Async::Zitadel::Error::Validation->new(
+        message => 'client_secret required',
+    )) unless defined $client_secret;
 
     return $self->token_f(
         grant_type    => 'client_credentials',
@@ -208,7 +304,10 @@ sub client_credentials_token_f {
 
 sub refresh_token_f {
     my ($self, $refresh_token, %args) = @_;
-    die "refresh_token required\n" unless defined $refresh_token && length $refresh_token;
+
+    return Future->fail(Net::Async::Zitadel::Error::Validation->new(
+        message => 'refresh_token required',
+    )) unless defined $refresh_token && length $refresh_token;
 
     return $self->token_f(
         grant_type    => 'refresh_token',
@@ -220,10 +319,15 @@ sub refresh_token_f {
 sub exchange_authorization_code_f {
     my ($self, %args) = @_;
 
-    my $code = delete $args{code}
-        // die "code required\n";
-    my $redirect_uri = delete $args{redirect_uri}
-        // die "redirect_uri required\n";
+    my $code = delete $args{code};
+    return Future->fail(Net::Async::Zitadel::Error::Validation->new(
+        message => 'code required',
+    )) unless defined $code;
+
+    my $redirect_uri = delete $args{redirect_uri};
+    return Future->fail(Net::Async::Zitadel::Error::Validation->new(
+        message => 'redirect_uri required',
+    )) unless defined $redirect_uri;
 
     return $self->token_f(
         grant_type   => 'authorization_code',
@@ -246,12 +350,6 @@ __END__
     my $z = Net::Async::Zitadel->new(issuer => 'https://zitadel.example.com');
     $loop->add($z);
 
-    # Async discovery
-    my $config = $z->oidc->discovery_f->get;
-
-    # Async JWKS
-    my $jwks = $z->oidc->jwks_f->get;
-
     # Async token verification
     my $claims = $z->oidc->verify_token_f($access_token)->get;
 
@@ -270,67 +368,71 @@ Async OIDC client for Zitadel, built on L<Net::Async::HTTP> and L<Future>.
 All methods return L<Future> objects (C<_f> suffix convention).
 
 Token verification automatically retries with a refreshed JWKS on failure,
-handling key rotation transparently.
+handling key rotation transparently. Concurrent JWKS refresh requests are
+coalesced: if a refresh is already in-flight, subsequent callers receive the
+same Future rather than triggering a second HTTP request.
 
 =attr issuer
 
-Required. The Zitadel issuer URL.
+Required. The Zitadel issuer URL. Must not be empty.
 
 =attr http
 
-Required. A L<Net::Async::HTTP> instance (typically shared from L<Net::Async::Zitadel>).
+Required. A L<Net::Async::HTTP> instance (typically shared from
+L<Net::Async::Zitadel>).
 
 =method discovery_f
 
-Returns a Future that resolves to the parsed OpenID Connect discovery document.
+Returns a Future resolving to the parsed OpenID Connect discovery document.
 Cached after first fetch.
 
 =method jwks_f
 
-Returns a Future that resolves to the JSON Web Key Set.
-Cached after first fetch. Pass C<< force_refresh => 1 >> to bypass cache.
+Returns a Future resolving to the JSON Web Key Set. Cached after first fetch.
+Pass C<< force_refresh => 1 >> to bypass the cache. Concurrent non-forced
+calls coalesce into the same in-flight request.
 
 =method verify_token_f
 
     my $f = $oidc->verify_token_f($jwt, %options);
 
-Returns a Future that resolves to the decoded claims hashref, or fails on
-verification error. Automatically retries with fresh JWKS on key mismatch.
-
-Options: C<audience>, C<verify_exp>, C<verify_iat>, C<verify_nbf>,
+Returns a Future resolving to the decoded claims hashref. Automatically retries
+once with a fresh JWKS on verification failure (key rotation). Options:
+C<audience>, C<verify_exp>, C<verify_iat>, C<verify_nbf>,
 C<accepted_key_alg>, C<no_retry>.
 
 =method userinfo_f
 
     my $f = $oidc->userinfo_f($access_token);
 
-Returns a Future that resolves to the UserInfo response.
+Returns a Future resolving to the UserInfo endpoint response.
 
 =method introspect_f
 
-    my $f = $oidc->introspect_f($token, client_id => ..., client_secret => ...);
+    my $f = $oidc->introspect_f($token,
+        client_id     => $id,
+        client_secret => $secret,
+    );
 
-Returns a Future that resolves to the introspection response.
-B<TODO: not yet implemented.>
+Returns a Future resolving to the token introspection response.
 
 =method token_f
 
-    my $f = $oidc->token_f(grant_type => '...', %params);
+    my $f = $oidc->token_f(grant_type => 'client_credentials', %params);
 
-Generic async token endpoint call. Returns a Future.
-B<TODO: not yet implemented.>
+Generic async token endpoint POST (form-encoded). Returns a Future.
 
 =method client_credentials_token_f
 
-Convenience wrapper for C<client_credentials> grant type.
+Convenience wrapper for C<client_credentials> grant.
 
 =method refresh_token_f
 
-Convenience wrapper for C<refresh_token> grant type.
+Convenience wrapper for C<refresh_token> grant.
 
 =method exchange_authorization_code_f
 
-Convenience wrapper for C<authorization_code> grant type.
+Convenience wrapper for C<authorization_code> grant.
 
 =head1 SEE ALSO
 
