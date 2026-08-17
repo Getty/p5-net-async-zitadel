@@ -87,3 +87,7 @@ Net-Async-Zitadel-*
 /resume
 /AGENTS.md
 
+
+# karr materialized task view -- never commit
+tasks/
+config.yml
