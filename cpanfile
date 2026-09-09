@@ -5,6 +5,7 @@ requires 'Future';
 requires 'JSON::MaybeXS';
 requires 'Crypt::JWT';
 requires 'HTTP::Request';
+requires 'MIME::Base64';
 requires 'URI';
 requires 'namespace::clean';
 

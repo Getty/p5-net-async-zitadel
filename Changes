@@ -12,6 +12,25 @@ Revision history for Net-Async-Zitadel
       still loads all three, so `use Net::Async::Zitadel::Error` is unchanged
       for callers. Mirrors the WWW::Zitadel split; clears the dzil "provide map
       entries did not map to .pm files" warning.
+    - Management API gains 28 `_f` methods, mirroring WWW::Zitadel 0.002 (same
+      paths and payloads, Future return values, required arguments validated
+      before any request):
+      - user grants: update_user_grant_f, deactivate_user_grant_f,
+        reactivate_user_grant_f, delete_user_grant_f
+      - typed identity providers: create_jwt_idp_f, create_google_idp_f,
+        create_azuread_idp_f, create_github_idp_f,
+        create_github_enterprise_idp_f, create_gitlab_idp_f,
+        create_gitlab_self_hosted_idp_f, create_apple_idp_f (private_key sent
+        base64-encoded), create_ldap_idp_f (root_ca sent base64-encoded)
+      - project roles: update_project_role_f, remove_project_role_f
+      - applications: create_saml_app_f (metadata_xml sent base64-encoded, or
+        metadata_url), update_saml_app_f, create_api_app_f
+      - organization domains: add_org_domain_f,
+        generate_org_domain_validation_f, validate_org_domain_f,
+        set_primary_org_domain_f, list_org_domains_f, remove_org_domain_f
+      - users and organizations: lock_user_f, unlock_user_f,
+        resend_email_verification_f, reactivate_org_f
+    - MIME::Base64 is now declared as a runtime dependency.
 
 0.001     2026-03-14 05:01:52Z
 

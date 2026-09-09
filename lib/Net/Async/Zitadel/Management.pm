@@ -155,6 +155,18 @@ sub reactivate_user_f {
     $self->_post_f("/users/$user_id/_reactivate", {});
 }
 
+sub lock_user_f {
+    my ($self, $user_id) = @_;
+    $user_id or _require('user_id required');
+    $self->_post_f("/users/$user_id/_lock", {});
+}
+
+sub unlock_user_f {
+    my ($self, $user_id) = @_;
+    $user_id or _require('user_id required');
+    $self->_post_f("/users/$user_id/_unlock", {});
+}
+
 sub delete_user_f {
     my ($self, $user_id) = @_;
     $user_id or _require('user_id required');
@@ -243,6 +255,12 @@ sub request_password_reset_f {
     my ($self, $user_id) = @_;
     $user_id or _require('user_id required');
     $self->_post_f("/users/$user_id/_reset_password", {});
+}
+
+sub resend_email_verification_f {
+    my ($self, $user_id) = @_;
+    $user_id or _require('user_id required');
+    $self->_post_f("/users/$user_id/email/_resend_verification", {});
 }
 
 # --- User metadata ---
@@ -387,6 +405,48 @@ sub delete_app_f {
     $self->_delete_f("/projects/$project_id/apps/$app_id");
 }
 
+sub create_saml_app_f {
+    my ($self, $project_id, %args) = @_;
+    $project_id or _require('project_id required');
+    my %body = (
+        name => $args{name} // _require('name required'),
+    );
+    if (defined $args{metadata_xml}) {
+        $body{metadataXml} = encode_base64($args{metadata_xml}, '');
+    } elsif (defined $args{metadata_url}) {
+        $body{metadataUrl} = $args{metadata_url};
+    } else {
+        _require('metadata_xml or metadata_url required');
+    }
+    $body{loginVersion} = $args{login_version} if $args{login_version};
+    $self->_post_f("/projects/$project_id/apps/saml", \%body);
+}
+
+sub update_saml_app_f {
+    my ($self, $project_id, $app_id, %args) = @_;
+    $project_id or _require('project_id required');
+    $app_id     or _require('app_id required');
+    my %body;
+    if (defined $args{metadata_xml}) {
+        $body{metadataXml} = encode_base64($args{metadata_xml}, '');
+    } elsif (defined $args{metadata_url}) {
+        $body{metadataUrl} = $args{metadata_url};
+    } else {
+        _require('metadata_xml or metadata_url required');
+    }
+    $body{loginVersion} = $args{login_version} if $args{login_version};
+    $self->_put_f("/projects/$project_id/apps/$app_id/saml_config", \%body);
+}
+
+sub create_api_app_f {
+    my ($self, $project_id, %args) = @_;
+    $project_id or _require('project_id required');
+    $self->_post_f("/projects/$project_id/apps/api", {
+        name => $args{name} // _require('name required'),
+        $args{auth_method} ? (authMethodType => $args{auth_method}) : (),
+    });
+}
+
 # --- Organizations ---
 
 sub get_org_f {
@@ -424,6 +484,54 @@ sub deactivate_org_f {
     $self->_post_f('/orgs/me/_deactivate', {});
 }
 
+sub reactivate_org_f {
+    my ($self) = @_;
+    $self->_post_f('/orgs/me/_reactivate', {});
+}
+
+sub add_org_domain_f {
+    my ($self, $domain) = @_;
+    $domain or _require('domain required');
+    $self->_post_f('/orgs/me/domains', { domain => $domain });
+}
+
+sub generate_org_domain_validation_f {
+    my ($self, $domain, %args) = @_;
+    $domain or _require('domain required');
+    $self->_post_f("/orgs/me/domains/$domain/validation/_generate", {
+        type => $args{type} // _require('type required'),
+    });
+}
+
+sub validate_org_domain_f {
+    my ($self, $domain) = @_;
+    $domain or _require('domain required');
+    $self->_post_f("/orgs/me/domains/$domain/validation/_validate", {});
+}
+
+sub set_primary_org_domain_f {
+    my ($self, $domain) = @_;
+    $domain or _require('domain required');
+    $self->_post_f("/orgs/me/domains/$domain/_set_primary", {});
+}
+
+sub list_org_domains_f {
+    my ($self, %args) = @_;
+    $self->_post_f('/orgs/me/domains/_search', {
+        query => {
+            offset => $args{offset} // 0,
+            limit  => $args{limit}  // 100,
+        },
+        $args{queries} ? (queries => $args{queries}) : (),
+    });
+}
+
+sub remove_org_domain_f {
+    my ($self, $domain) = @_;
+    $domain or _require('domain required');
+    $self->_delete_f("/orgs/me/domains/$domain");
+}
+
 # --- Roles ---
 
 sub add_project_role_f {
@@ -448,6 +556,23 @@ sub list_project_roles_f {
     });
 }
 
+sub update_project_role_f {
+    my ($self, $project_id, $role_key, %args) = @_;
+    $project_id or _require('project_id required');
+    $role_key   or _require('role_key required');
+    $self->_put_f("/projects/$project_id/roles/$role_key", {
+        displayName => $args{display_name} // _require('display_name required'),
+        $args{group} ? (group => $args{group}) : (),
+    });
+}
+
+sub remove_project_role_f {
+    my ($self, $project_id, $role_key) = @_;
+    $project_id or _require('project_id required');
+    $role_key   or _require('role_key required');
+    $self->_delete_f("/projects/$project_id/roles/$role_key");
+}
+
 # --- User Grants (role assignments) ---
 
 sub create_user_grant_f {
@@ -468,6 +593,36 @@ sub list_user_grants_f {
         },
         $args{queries} ? (queries => $args{queries}) : (),
     });
+}
+
+sub update_user_grant_f {
+    my ($self, $user_id, $grant_id, %args) = @_;
+    $user_id  or _require('user_id required');
+    $grant_id or _require('grant_id required');
+    $self->_put_f("/users/$user_id/grants/$grant_id", {
+        $args{role_keys} ? (roleKeys => $args{role_keys}) : (),
+    });
+}
+
+sub deactivate_user_grant_f {
+    my ($self, $user_id, $grant_id) = @_;
+    $user_id  or _require('user_id required');
+    $grant_id or _require('grant_id required');
+    $self->_post_f("/users/$user_id/grants/$grant_id/_deactivate", {});
+}
+
+sub reactivate_user_grant_f {
+    my ($self, $user_id, $grant_id) = @_;
+    $user_id  or _require('user_id required');
+    $grant_id or _require('grant_id required');
+    $self->_post_f("/users/$user_id/grants/$grant_id/_reactivate", {});
+}
+
+sub delete_user_grant_f {
+    my ($self, $user_id, $grant_id) = @_;
+    $user_id  or _require('user_id required');
+    $grant_id or _require('grant_id required');
+    $self->_delete_f("/users/$user_id/grants/$grant_id");
 }
 
 # --- Identity Providers (IDPs) ---
@@ -500,6 +655,130 @@ sub create_oidc_idp_f {
         $args{display_name_mapping} ? (displayNameMapping => $args{display_name_mapping}) : (),
         $args{username_mapping}     ? (usernameMapping    => $args{username_mapping})     : (),
         $args{auto_register}        ? (autoRegister       => $args{auto_register})        : (),
+    });
+}
+
+sub create_jwt_idp_f {
+    my ($self, %args) = @_;
+    $self->_post_f('/idps/generic_jwt', {
+        name         => $args{name}         // _require('name required'),
+        issuer       => $args{issuer}       // _require('issuer required'),
+        jwtEndpoint  => $args{jwt_endpoint}  // _require('jwt_endpoint required'),
+        keysEndpoint => $args{keys_endpoint} // _require('keys_endpoint required'),
+        headerName   => $args{header_name}   // _require('header_name required'),
+        $args{audience}         ? (audience        => $args{audience})         : (),
+        $args{provider_options} ? (providerOptions => $args{provider_options}) : (),
+    });
+}
+
+sub create_google_idp_f {
+    my ($self, %args) = @_;
+    $self->_post_f('/idps/google', {
+        $args{name}             ? (name            => $args{name})             : (),
+        clientId     => $args{client_id}     // _require('client_id required'),
+        clientSecret => $args{client_secret} // _require('client_secret required'),
+        $args{scopes}           ? (scopes          => $args{scopes})           : (),
+        $args{provider_options} ? (providerOptions => $args{provider_options}) : (),
+    });
+}
+
+sub create_azuread_idp_f {
+    my ($self, %args) = @_;
+    my %body = (
+        name         => $args{name}         // _require('name required'),
+        clientId     => $args{client_id}     // _require('client_id required'),
+        clientSecret => $args{client_secret} // _require('client_secret required'),
+        $args{email_verified}   ? (emailVerified  => $args{email_verified})   : (),
+        $args{scopes}           ? (scopes         => $args{scopes})           : (),
+        $args{provider_options} ? (providerOptions => $args{provider_options}) : (),
+    );
+    if ($args{tenant}) {
+        $body{tenant} = $args{tenant};
+    } elsif (defined $args{tenant_id}) {
+        $body{tenant} = { tenantId => $args{tenant_id} };
+    } elsif (defined $args{tenant_type}) {
+        $body{tenant} = { tenantType => $args{tenant_type} };
+    }
+    $self->_post_f('/idps/azure', \%body);
+}
+
+sub create_github_idp_f {
+    my ($self, %args) = @_;
+    $self->_post_f('/idps/github', {
+        $args{name}             ? (name            => $args{name})             : (),
+        clientId     => $args{client_id}     // _require('client_id required'),
+        clientSecret => $args{client_secret} // _require('client_secret required'),
+        $args{scopes}           ? (scopes          => $args{scopes})           : (),
+        $args{provider_options} ? (providerOptions => $args{provider_options}) : (),
+    });
+}
+
+sub create_github_enterprise_idp_f {
+    my ($self, %args) = @_;
+    $self->_post_f('/idps/github_es', {
+        clientId            => $args{client_id}            // _require('client_id required'),
+        name                => $args{name}                 // _require('name required'),
+        clientSecret        => $args{client_secret}        // _require('client_secret required'),
+        authorizationEndpoint => $args{authorization_endpoint} // _require('authorization_endpoint required'),
+        tokenEndpoint       => $args{token_endpoint}       // _require('token_endpoint required'),
+        userEndpoint        => $args{user_endpoint}         // _require('user_endpoint required'),
+        $args{scopes}           ? (scopes          => $args{scopes})           : (),
+        $args{provider_options} ? (providerOptions => $args{provider_options}) : (),
+    });
+}
+
+sub create_gitlab_idp_f {
+    my ($self, %args) = @_;
+    $self->_post_f('/idps/gitlab', {
+        $args{name}             ? (name            => $args{name})             : (),
+        clientId     => $args{client_id}     // _require('client_id required'),
+        clientSecret => $args{client_secret} // _require('client_secret required'),
+        $args{scopes}           ? (scopes          => $args{scopes})           : (),
+        $args{provider_options} ? (providerOptions => $args{provider_options}) : (),
+    });
+}
+
+sub create_gitlab_self_hosted_idp_f {
+    my ($self, %args) = @_;
+    $self->_post_f('/idps/gitlab_self_hosted', {
+        issuer       => $args{issuer}       // _require('issuer required'),
+        name         => $args{name}         // _require('name required'),
+        clientId     => $args{client_id}     // _require('client_id required'),
+        clientSecret => $args{client_secret} // _require('client_secret required'),
+        $args{scopes}           ? (scopes          => $args{scopes})           : (),
+        $args{provider_options} ? (providerOptions => $args{provider_options}) : (),
+    });
+}
+
+sub create_apple_idp_f {
+    my ($self, %args) = @_;
+    $self->_post_f('/idps/apple', {
+        $args{name}             ? (name            => $args{name})             : (),
+        clientId     => $args{client_id}     // _require('client_id required'),
+        teamId       => $args{team_id}       // _require('team_id required'),
+        keyId        => $args{key_id}        // _require('key_id required'),
+        privateKey   => encode_base64($args{private_key} // _require('private_key required'), ''),
+        $args{scopes}           ? (scopes          => $args{scopes})           : (),
+        $args{provider_options} ? (providerOptions => $args{provider_options}) : (),
+    });
+}
+
+sub create_ldap_idp_f {
+    my ($self, %args) = @_;
+    $self->_post_f('/idps/ldap', {
+        name               => $args{name}                 // _require('name required'),
+        servers            => $args{servers}              // _require('servers required'),
+        $args{start_tls}         ? (startTls             => $args{start_tls})         : (),
+        baseDn             => $args{base_dn}             // _require('base_dn required'),
+        bindDn             => $args{bind_dn}             // _require('bind_dn required'),
+        bindPassword       => $args{bind_password}       // _require('bind_password required'),
+        userBase           => $args{user_base}            // _require('user_base required'),
+        userObjectClasses  => $args{user_object_classes}  // _require('user_object_classes required'),
+        userFilters        => $args{user_filters}         // _require('user_filters required'),
+        $args{timeout}          ? (timeout             => $args{timeout})            : (),
+        $args{attributes}       ? (attributes           => $args{attributes})       : (),
+        $args{provider_options} ? (providerOptions       => $args{provider_options}) : (),
+        $args{root_ca}          ? (rootCa               => encode_base64($args{root_ca}, '')) : (),
     });
 }
 
