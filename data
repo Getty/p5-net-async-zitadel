@@ -1,0 +1,93 @@
+---
+claimed_at: 2026-09-09T08:47:40Z
+claimed_by: p5-net-async-zitadel
+class: standard
+completed: 2026-09-09T08:47:40Z
+created: 2026-08-10T16:57:27Z
+id: 1
+priority: high
+started: 2026-09-09T08:47:40Z
+status: done
+tags:
+- parity
+- sync
+- management-api
+- facade
+title: 'Sync from WWW-Zitadel 0.002: facade UA-sharing + 28 new Management methods
+  (mirror with _f/Futures)'
+updated: 2026-09-09T08:47:40Z
+---
+
+## Sync from WWW-Zitadel 0.002
+
+Mirror the 0.002 changes from `p5-www-zitadel` (commits `016e460`,
+`43198bf`) into this async twin, keeping the public API surface identical
+except for the `_f` suffix + Future return convention.
+
+### 1. Facade UA-sharing
+`WWW::Zitadel` now builds a single lazy `ua` (LWP::UserAgent) and passes
+`ua => $self->ua` into the `oidc` and `management` builders (connection
+pooling), plus a public `ua` attribute for injection.
+
+Twin task: mirror the shared-`ua` plumbing on the async side. The async
+equivalent is a shared HTTP client (IO::Async::HTTP / Net::Async::HTTP)
+built once in the facade and handed to the sub-clients, with a public
+attribute for injection.
+
+### 2. 28 new Management API v1 methods (mirror each as `_f` returning a Future)
+Paths verified against the official docs + management/v2 proto.
+
+- **User grants lifecycle**
+  - `update_user_grant` (PUT /users/{userId}/grants/{grantId}, roleKeys optional)
+  - `deactivate_user_grant` (POST .../_deactivate)
+  - `reactivate_user_grant` (POST .../_reactivate)
+  - `delete_user_grant` (DELETE)
+- **Typed identity providers** (Add*Provider endpoints, `providerOptions` wrapper)
+  - `create_jwt_idp` (/idps/generic_jwt)
+  - `create_google_idp` (/idps/google)
+  - `create_azuread_idp` (/idps/azure; tenant oneof)
+  - `create_github_idp` (/idps/github)
+  - `create_github_enterprise_idp` (/idps/github_es; authorization/token/user endpoints)
+  - `create_gitlab_idp` (/idps/gitlab)
+  - `create_gitlab_self_hosted_idp` (/idps/gitlab_self_hosted; issuer)
+  - `create_apple_idp` (/idps/apple; teamId/keyId/privateKey base64)
+  - `create_ldap_idp` (/idps/ldap; servers/baseDn/bindDn/bindPassword/userBase/
+    userObjectClasses/userFilters required, rootCa base64, timeout/attributes optional)
+- **Project roles**
+  - `update_project_role` (PUT /projects/{projectId}/roles/{roleKey}, displayName required)
+  - `remove_project_role` (DELETE)
+- **Applications**
+  - `create_saml_app` (POST /projects/{projectId}/apps/saml; metadata_xml base64 OR metadata_url)
+  - `update_saml_app` (PUT .../saml_config)
+  - `create_api_app` (POST .../apps/api)
+- **Organization domains** (two-step challenge/token verification)
+  - `add_org_domain` (POST /orgs/me/domains)
+  - `generate_org_domain_validation` (POST /orgs/me/domains/{domain}/validation/_generate)
+  - `validate_org_domain` (POST .../validation/_validate)
+  - `set_primary_org_domain` (POST .../_set_primary)
+  - `list_org_domains` (POST /orgs/me/domains/_search)
+  - `remove_org_domain` (DELETE)
+- **User lifecycle / org**
+  - `lock_user` (POST /users/{userId}/_lock)
+  - `unlock_user`
+  - `resend_email_verification` (POST /users/{userId}/email/_resend_verification)
+  - `reactivate_org` (POST /orgs/me/_reactivate; mirror of deactivate_org)
+
+### 3. Convention reminders
+- snake_case args -> camelCase JSON keys (same mapping as sync side).
+- base64 via `encode_base64($x, '')` for apple private_key, ldap root_ca,
+  saml metadata_xml.
+- `providerOptions` wrapper shape for the typed IdPs (NOT flat fields).
+- Required-arg validation throws before any network call.
+
+### 4. Tests
+Mirror the sync-side coverage (paths, camelCase, base64, providerOptions
+nesting, required-arg validation) for the `_f` variants. 384 sync tests ->
+matching async coverage.
+
+### 5. Changes
+Add a Changes entry on the async side once mirrored.
+
+Reference: p5-www-zitadel `Changes` `{{$NEXT}}` (0.002) section.
+
+2026-09-09 08:47 Mirrored WWW-Zitadel 0.002 onto the async twin. Added all 28 Management _f methods (user grants, 9 typed IdPs with providerOptions, project roles, SAML API apps, org domains two-step, user lock unlock resend verification, reactivate_org), exact mirror of the sync bodies via the _post_f _put_f _delete_f _get_f helpers with _require validation before any network call, camelCase mapping and base64 for apple private_key ldap root_ca saml metadata_xml. Facade UA-sharing was already present and injectable so unchanged. Declared MIME::Base64 in cpanfile. Added t/04-management-sync-0002.t, 123 mocked tests covering all 28. prove -lr t green 320 tests, dzil test green 324. Commit 30e6825. Note, found a separate pre-existing facade constructor bug filed as ticket 2.
