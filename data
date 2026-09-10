@@ -1,0 +1,8 @@
+{"action":"create","agent":"p5-net-async-zitadel","detail":"backlog","task_id":2,"ts":"2026-09-09T08:47:10Z"}
+{"action":"edit","agent":"p5-net-async-zitadel","detail":"backlog","task_id":1,"ts":"2026-09-09T08:47:26Z"}
+{"action":"edit","agent":"p5-net-async-zitadel","detail":"backlog","task_id":1,"ts":"2026-09-09T08:47:33Z"}
+{"action":"move","agent":"p5-net-async-zitadel","detail":"done","task_id":1,"ts":"2026-09-09T08:47:40Z"}
+{"action":"edit","agent":"p5-net-async-zitadel","detail":"backlog","task_id":2,"ts":"2026-09-09T08:48:12Z"}
+{"action":"move","agent":"worker-c","detail":"in-progress","task_id":2,"ts":"2026-09-10T03:47:01Z"}
+{"action":"edit","agent":"worker-c","detail":"in-progress","task_id":2,"ts":"2026-09-10T03:50:16Z"}
+{"action":"move","agent":"worker-c","detail":"done","task_id":2,"ts":"2026-09-10T03:50:19Z"}
