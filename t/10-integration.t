@@ -22,7 +22,7 @@ my $client_secret = $ENV{ZITADEL_CLIENT_SECRET};
 my $loop = IO::Async::Loop->new;
 my $z = Net::Async::Zitadel->new(
     issuer   => $issuer,
-    ($token ? (token => $token, base_url => $issuer) : ()),
+    ($token ? (token => $token) : ()),
 );
 $loop->add($z);
 

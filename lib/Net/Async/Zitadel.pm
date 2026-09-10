@@ -13,6 +13,16 @@ extends 'IO::Async::Notifier';
 
 our $VERSION = '0.002';
 
+# IO::Async::Notifier is a non-Moo parent: its new() hands every constructor
+# key to configure(), which croaks on keys it does not recognise. Strip our
+# own attributes here so only genuine notifier params reach the parent. Moo
+# still sets the attributes from the original args, and BUILD validates them.
+sub FOREIGNBUILDARGS {
+    my ($class, %args) = @_;
+    delete @args{qw(issuer token http)};
+    return %args;
+}
+
 has issuer => (
     is       => 'ro',
     required => 1,

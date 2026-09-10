@@ -3,9 +3,38 @@ use warnings;
 use Test::More;
 use Test::Exception;
 
+use Net::Async::Zitadel;
 use Net::Async::Zitadel::OIDC;
 use Net::Async::Zitadel::Management;
 use Net::Async::Zitadel::Error;
+
+# Facade constructor. Net::Async::Zitadel is a Moo class that extends the
+# non-Moo IO::Async::Notifier; regression for karr #2, where the documented
+# new(issuer => ..., token => ...) died with "Unrecognised configuration keys".
+# Offline: http/oidc/management are lazy, so construction makes no network call.
+{
+    my $z;
+    lives_ok {
+        $z = Net::Async::Zitadel->new(
+            issuer => 'https://zitadel.example.com',
+            token  => 'pat',
+        );
+    } 'facade new(issuer, token) does not die';
+    ok $z && $z->isa('IO::Async::Notifier'), 'facade isa IO::Async::Notifier';
+    is $z->issuer, 'https://zitadel.example.com', 'facade issuer set';
+    is $z->token,  'pat', 'facade token set';
+    isa_ok $z->oidc,       'Net::Async::Zitadel::OIDC';
+    isa_ok $z->management, 'Net::Async::Zitadel::Management';
+
+    # empty issuer still rejected by BUILD
+    throws_ok { Net::Async::Zitadel->new(issuer => '') }
+        qr/issuer must not be empty/, 'facade rejects empty issuer';
+
+    # token is optional; management then dies asking for a token
+    my $z2 = Net::Async::Zitadel->new(issuer => 'https://zitadel.example.com');
+    throws_ok { $z2->management }
+        qr/requires a token/, 'facade management dies without token';
+}
 
 # OIDC requires issuer
 throws_ok { Net::Async::Zitadel::OIDC->new(http => bless {}, 'Local::FakeHTTP') }
