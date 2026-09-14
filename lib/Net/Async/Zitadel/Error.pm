@@ -1,6 +1,6 @@
 package Net::Async::Zitadel::Error;
 
-# ABSTRACT: Structured exception classes for Net::Async::Zitadel
+# ABSTRACT: Structured exception base class for Net::Async::Zitadel
 
 use Moo;
 
@@ -22,36 +22,14 @@ has message => (
     required => 1,
 );
 
-package Net::Async::Zitadel::Error::Validation;
-
-use Moo;
-extends 'Net::Async::Zitadel::Error';
-use namespace::clean;
-
-package Net::Async::Zitadel::Error::Network;
-
-use Moo;
-extends 'Net::Async::Zitadel::Error';
-use namespace::clean;
-
-package Net::Async::Zitadel::Error::API;
-
-use Moo;
-extends 'Net::Async::Zitadel::Error';
-use namespace::clean;
-
-=attr http_status
-
-The HTTP status line returned by the server, e.g. C<"400 Bad Request">.
-
-=attr api_message
-
-The C<message> field from the JSON error body, if present.
-
-=cut
-
-has http_status => ( is => 'ro' );
-has api_message => ( is => 'ro' );
+# Concrete subclasses live one-per-file (Error/Validation.pm, Error/Network.pm,
+# Error/API.pm). Load them here so `use Net::Async::Zitadel::Error` still pulls
+# in the whole family — callers only ever `use` this module, then reference
+# ::Validation / ::Network / ::API. Required at runtime, after the base class is
+# defined, so each subclass's `extends 'Net::Async::Zitadel::Error'` resolves.
+require Net::Async::Zitadel::Error::Validation;
+require Net::Async::Zitadel::Error::Network;
+require Net::Async::Zitadel::Error::API;
 
 1;
 
@@ -79,19 +57,21 @@ __END__
 
 =head1 DESCRIPTION
 
-Three exception classes, all inheriting from C<Net::Async::Zitadel::Error>:
+C<Net::Async::Zitadel::Error> is the exception base class. Loading it also loads
+its three concrete subclasses, each of which C<extends> this class and inherits
+the stringification overload:
 
 =over 4
 
-=item C<Net::Async::Zitadel::Error::Validation>
+=item L<Net::Async::Zitadel::Error::Validation>
 
 Missing/invalid arguments, empty issuer/base_url.
 
-=item C<Net::Async::Zitadel::Error::Network>
+=item L<Net::Async::Zitadel::Error::Network>
 
 OIDC endpoint HTTP failures (discovery, JWKS, userinfo, token).
 
-=item C<Net::Async::Zitadel::Error::API>
+=item L<Net::Async::Zitadel::Error::API>
 
 Management API non-2xx responses. Carries C<http_status> and C<api_message>.
 

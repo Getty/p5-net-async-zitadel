@@ -1,6 +1,11 @@
 Revision history for Net-Async-Zitadel
 
 {{$NEXT}}
+    - Split Net::Async::Zitadel::Error into one package per file
+      (Error/Validation.pm, Error/Network.pm, Error/API.pm); the base module
+      still loads all three, so `use Net::Async::Zitadel::Error` is unchanged
+      for callers. Mirrors the WWW::Zitadel split; clears the dzil "provide map
+      entries did not map to .pm files" warning.
 
 0.001     2026-03-14 05:01:52Z
 
