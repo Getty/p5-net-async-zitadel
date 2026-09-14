@@ -2,7 +2,7 @@
 
 Repo-Guide für `Net::Async::Zitadel`. Die allgemeinen Perl-Regeln (Module-Loading,
 Moo/Moose, `@Author::GETTY]` Dist::Zilla, cpanfile-Versionierung, Style) stehen
-in der Workspace-`../CLAUDE.md` und im `perl-core`-Skill — die gelten hier
+in der Workspace-`../CLAUDE.md` und im `getty-perl-core`-Skill — die gelten hier
 weiterhin.
 
 ## Was ist das?
@@ -37,7 +37,7 @@ nicht gesetzt ist — kein Geheimnis-Leak in CI.
 
 IO::Async + Future/Future::AsyncAwait. Bei Lifecycle-, Cancellation- oder
 Retention-Fragen → Skill `perl-io-async-future`. Bei Moo-Attributen, Rollen,
-`->instance`-Semantik → Skill `perl-moo`.
+`->instance`-Semantik → Skill `getty-perl-moo`.
 
 ## Fehlerbehandlung
 
@@ -64,3 +64,19 @@ try {
 3. Test in `t/` mit gemockter Response; Live-Call nach dem Muster in
    `t/10-integration.t`.
 4. Neuen Endpunkt in `Changes` unter `{{$NEXT}}` dokumentieren.
+
+## Delegation
+
+Verhaltensrelevanten Code an den passenden Agenten delegieren statt selbst anfassen —
+Prinzip und Lane stehen in `.claude/rules/net-async-zitadel-rules.md`.
+
+| Aufgabe | Agent |
+|---|---|
+| Code implementieren / refactoren / debuggen | `net-async-zitadel-worker` (Default) |
+| Tests schreiben/erweitern | `net-async-zitadel-test-writer` |
+| POD schreiben/pflegen | `net-async-zitadel-doc-writer` |
+| Pre-Release-Audit | `net-async-zitadel-release-checker` |
+
+Die Agenten laden ihre Skills via `briefing.skills` (siehe `.claude/agents/`); der
+Haupt-Agent delegiert, statt sie selbst zu laden. Skill-Quellen liegen unter
+`.claude/skills/`. Twin: `p5-www-zitadel` (Sync, identische API ohne `_f`).
