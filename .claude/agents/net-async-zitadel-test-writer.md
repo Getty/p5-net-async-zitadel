@@ -2,7 +2,6 @@
 name: net-async-zitadel-test-writer
 description: "Write Net-Async-Zitadel tests with Test::More/Test::Exception over Future-returning _f methods. Never run the live suite (t/10-integration.t) — it hits a real ZITADEL and is opt-in only. Use for test additions, regression scaffolding, OIDC/Management API coverage."
 model: sonnet
-allowed-tools: Read, Edit, Write, Bash, Glob, Grep
 briefing:
   skills:
     - net-async-zitadel-core

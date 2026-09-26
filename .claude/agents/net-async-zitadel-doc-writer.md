@@ -2,7 +2,7 @@
 name: net-async-zitadel-doc-writer
 description: "Write and maintain Net-Async-Zitadel POD documentation in the @Author::GETTY PodWeaver house format (inline =attr, =method, =opt directives). Single module at a time; specify the path under lib/Net/Async/Zitadel/."
 model: sonnet
-allowed-tools: Read, Edit, Grep, Glob
+disallowedTools: Write, NotebookEdit, Bash
 briefing:
   skills:
     - net-async-zitadel-core
