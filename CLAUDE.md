@@ -75,7 +75,7 @@ Prinzip und Lane stehen in `.claude/rules/net-async-zitadel-rules.md`.
 | Code implementieren / refactoren / debuggen | `net-async-zitadel-worker` (Default) |
 | Tests schreiben/erweitern | `net-async-zitadel-test-writer` |
 | POD schreiben/pflegen | `net-async-zitadel-doc-writer` |
-| Pre-Release-Audit | `net-async-zitadel-release-checker` |
+| Pre-Release-Audit | `net-async-zitadel-release-manager` |
 
 Die Agenten laden ihre Skills via `briefing.skills` (siehe `.claude/agents/`); der
 Haupt-Agent delegiert, statt sie selbst zu laden. Skill-Quellen liegen unter

@@ -6,7 +6,7 @@ allowed-tools: Read, Edit, Grep, Glob
 briefing:
   skills:
     - net-async-zitadel-core
-    - getty-perl-release-author-getty
+    - getty-perl-pod
 ---
 
 You are the net-async-zitadel-doc-writer for **Net-Async-Zitadel**.

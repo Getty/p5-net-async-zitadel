@@ -25,7 +25,7 @@ This rule depends on whether the Agent/Task tool is available to you.
 
 - **You can spawn subagents** (orchestrating main agent): do NOT touch behavior-relevant
   code yourself — delegate to this repo's worker. Your lane: coordinate, inspect, plan,
-  review diffs, run tests, manage git, edit non-behavioral docs. When in doubt, delegate.
+  review diffs, run tests, edit non-behavioral docs. When in doubt, delegate.
   Only the `net-async-zitadel-*` agents get their skills force-loaded via `briefing.skills`;
   you get no briefing and would touch internals with too little context.
 
@@ -33,7 +33,7 @@ This rule depends on whether the Agent/Task tool is available to you.
   |---|---|
   | Implement / refactor / debug behavior-relevant code | `net-async-zitadel-worker` (default) |
   | Write/extend tests | `net-async-zitadel-test-writer` |
-  | Pre-release audit | `net-async-zitadel-release-checker` |
+  | Commits, `Changes`, card → done, pre-release audit | `net-async-zitadel-release-manager` |
   | Write/maintain POD | `net-async-zitadel-doc-writer` |
 
 - **You cannot spawn subagents** (you ARE a `net-async-zitadel-*` agent): the delegation
@@ -42,6 +42,9 @@ This rule depends on whether the Agent/Task tool is available to you.
 Behavior-relevant = runtime behavior, the public API (`Net::Async::Zitadel`, `::OIDC`,
 `::Management`), the `_f`/Future contract, error handling, the sync/async sibling
 invariant, tests, performance. Pure prose docs and `Changes` notes are not.
+
+**Only `net-async-zitadel-release-manager` commits.** A worker leaves a commit-ready tree and hands its card
+to `review`; you then dispatch `net-async-zitadel-release-manager` to cut the commit and close the card.
 
 ## Async discipline
 
@@ -55,7 +58,7 @@ skill `perl-io-async-future`.
 ## Coordination — karr board
 
 Ticket coordination is the orchestrating agent's job, so `karr` is always in scope —
-don't invoke the `kanban-issues-karr-cli` skill first, just use it. Git-native kanban; state
+don't invoke the `kanban-issues-karr-coordination` skill first, just use it. Git-native kanban; state
 lives in `refs/karr/*`; this repo has its own board.
 
 - `karr list --compact` / `karr board` — open work · `karr show ID` — detail

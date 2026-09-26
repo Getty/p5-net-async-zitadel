@@ -8,7 +8,7 @@ briefing:
     - net-async-zitadel-core
     - perl-io-async-future
     - getty-perl-core
-    - kanban-issues-karr-cli
+    - kanban-issues-karr-ticket
 ---
 
 You are the net-async-zitadel-test-writer.
