@@ -11,4 +11,6 @@ requires 'namespace::clean';
 on test => sub {
     requires 'Test::More';
     requires 'Test::Exception';
+    requires 'Crypt::PK::RSA';
+    requires 'Crypt::PK::ECC';
 };

@@ -160,6 +160,14 @@ sub verify_token_f {
         message => 'No token provided',
     )) unless defined $token;
 
+    # Crypt::JWT pins the signature algorithm through accepted_alg and
+    # silently ignores option names it does not know, so the list has to be
+    # handed over under exactly that name. accepted_key_alg is the name this
+    # method took first and stays as an alias.
+    my $accepted_alg = $args{accepted_alg}
+        // $args{accepted_key_alg}
+        // ['RS256', 'RS384', 'RS512'];
+
     return $self->jwks_f->then(sub {
         my ($jwks) = @_;
 
@@ -173,7 +181,7 @@ sub verify_token_f {
                 verify_nbf       => $args{verify_nbf} // 0,
                 verify_iss       => $self->issuer,
                 verify_aud       => $args{audience},
-                accepted_key_alg => $args{accepted_key_alg} // ['RS256', 'RS384', 'RS512'],
+                accepted_alg     => $accepted_alg,
             );
         };
         if ($@ && !$args{no_retry}) {
@@ -188,7 +196,7 @@ sub verify_token_f {
                     verify_nbf       => $args{verify_nbf} // 0,
                     verify_iss       => $self->issuer,
                     verify_aud       => $args{audience},
-                    accepted_key_alg => $args{accepted_key_alg} // ['RS256', 'RS384', 'RS512'],
+                    accepted_alg     => $accepted_alg,
                 );
                 return Future->done($retry_claims);
             });
@@ -433,7 +441,20 @@ calls coalesce into the same in-flight request.
 Returns a Future resolving to the decoded claims hashref. Automatically retries
 once with a fresh JWKS on verification failure (key rotation). Options:
 C<audience>, C<verify_exp>, C<verify_iat>, C<verify_nbf>,
-C<accepted_key_alg>, C<no_retry>.
+C<accepted_alg> (default RS256/384/512), C<no_retry>.
+
+C<accepted_alg> is the allow-list of signature algorithms and is passed to
+L<Crypt::JWT> as its C<accepted_alg>: an algorithm name, an arrayref of names
+or a C<Regexp>. A token signed with any other algorithm is rejected, even if
+its key is in the JWKS. The default accepts RSA PKCS#1 v1.5 signatures only;
+an instance that signs with ECDSA or Ed25519 keys needs the list widened:
+
+    my $f = $oidc->verify_token_f($jwt,
+        accepted_alg => ['RS256', 'ES256', 'EdDSA'],
+    );
+
+C<accepted_key_alg> is the older name of the same option and is still
+accepted; C<accepted_alg> wins if both are given.
 
 =method userinfo_f
 
