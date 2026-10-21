@@ -11,6 +11,31 @@ This is the async twin of `WWW::Zitadel` (`p5-www-zitadel/`): **identical public
 API surface, every call suffixed `_f` and returning a `Future`** instead of a
 blocking result.
 
+## The delegation model — why the main agent delegates
+
+Four roles: `net-async-zitadel-worker` (implement, refactor, debug),
+`net-async-zitadel-test-writer` (tests), `net-async-zitadel-release-manager` (commit,
+`Changes`, card → done, pre-release audit), `net-async-zitadel-doc-writer` (POD). All
+four get their skills force-loaded via `briefing.skills`. The orchestrating main agent gets
+**no briefing** — it coordinates, inspects, plans, reviews diffs, runs tests and edits
+non-behavioral docs, and delegates anything behavior-relevant here. Reason: only the
+briefed agents see the sync/async twin invariant and the `_f` contract in context; an
+unbriefed hand inside `lib/` would break exactly those. When in doubt, delegate.
+
+Behavior-relevant = runtime behavior, the public API (`Net::Async::Zitadel`, `::OIDC`,
+`::Management`), the `_f`/Future contract, error handling, the sync/async sibling invariant,
+tests, performance. Pure prose docs and `Changes` notes are not.
+
+## Async discipline
+
+- **Never block in library code** — return the `Future`, never `->get` inside `lib/`.
+- Every public method is `*_f`; new endpoints dispatch through the shared
+  `_request_f`/`request_f` helper, not bespoke per-endpoint HTTP.
+- `Net::Async::Zitadel` extends the **non-Moo** `IO::Async::Notifier`: keep its
+  `FOREIGNBUILDARGS` strip list in sync with its own constructor attributes, or `new()`
+  croaks on an unknown key.
+- Lifecycle, cancellation and retention questions → skill `perl-io-async-future`.
+
 ## Module map
 
 - `Net::Async::Zitadel`: unified entrypoint; an `IO::Async::Notifier`. Attrs
