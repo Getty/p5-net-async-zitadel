@@ -8,6 +8,7 @@ use JSON::MaybeXS qw(decode_json);
 use HTTP::Request;
 use URI;
 use Future;
+use Scalar::Util qw(refaddr weaken);
 use Net::Async::Zitadel::Error;
 use namespace::clean;
 
@@ -114,10 +115,12 @@ sub jwks_f {
         return Future->done($self->_jwks_cache);
     }
 
-    # Coalesce concurrent JWKS refreshes: if a fetch is already in-flight,
-    # return the same Future rather than issuing a second HTTP request.
-    if (!$force && $self->_jwks_inflight) {
-        return $self->_jwks_inflight;
+    # Coalesce concurrent JWKS refreshes, forced ones included: if a fetch is
+    # already in-flight, hand out a Future derived from it rather than issuing
+    # a second HTTP request. without_cancel keeps one caller's cancel() from
+    # tearing down the fetch the others are waiting for.
+    if (my $inflight = $self->_jwks_inflight) {
+        return $inflight->without_cancel;
     }
 
     my $f = $self->discovery_f->then(sub {
@@ -137,18 +140,24 @@ sub jwks_f {
         my $jwks = decode_json($response->decoded_content);
         $self->_jwks_cache($jwks);
         $self->_jwks_expires(time() + $self->jwks_ttl);
-        $self->_jwks_inflight(undef);
         return Future->done($jwks);
-    })->on_fail(sub {
-        $self->_jwks_inflight(undef);
     });
 
-    # Only store the in-flight Future if it is still pending.
-    # Synchronous (already-resolved) chains must not be stored, because
-    # the on_fail/on_done clearing inside the chain already ran before we
-    # reach this line, and storing $f here would re-populate the slot.
-    $self->_jwks_inflight($f) unless $force || $f->is_ready;
-    return $f;
+    # Store the fetch only while it is pending: a chain that resolved
+    # synchronously has nothing to coalesce onto. on_ready frees the slot on
+    # success, failure and cancellation alike; it compares the Future it is
+    # handed, so it neither captures $f nor wipes a newer fetch's slot.
+    unless ($f->is_ready) {
+        $self->_jwks_inflight($f);
+        weaken(my $weak_self = $self);
+        $f->on_ready(sub {
+            my ($done) = @_;
+            my $slot = $weak_self && $weak_self->_jwks_inflight;
+            $weak_self->_jwks_inflight(undef)
+                if $slot && refaddr($slot) == refaddr($done);
+        });
+    }
+    return $f->without_cancel;
 }
 
 # --- Token verification ---

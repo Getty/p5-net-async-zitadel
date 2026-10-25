@@ -496,4 +496,71 @@ sub _discovery {
     ok $f5->is_failed, 'exchange_authorization_code_f without redirect_uri fails';
 }
 
+# --- Cancelling a JWKS caller must not poison the shared in-flight fetch ---
+
+{
+    my $pending = Future->new;
+    my $http = Local::MockHTTP->new(_ok(_discovery()), $pending);
+    my $oidc = Net::Async::Zitadel::OIDC->new(
+        issuer => 'https://zitadel.example.com',
+        http   => $http,
+    );
+    $oidc->discovery_f->get;
+
+    my $f1 = $oidc->jwks_f;
+    $f1->cancel;
+
+    my $f2 = $oidc->jwks_f;
+    ok !$f2->is_ready, 'caller after a cancelled caller gets a live pending Future';
+    is scalar(grep { $_->{method} eq 'GET' } @{ $http->calls }), 2,
+        'discovery + exactly one JWKS request';
+
+    $pending->done(Local::Response->new(
+        is_success => 1, status_line => '200 OK',
+        decoded_content => encode_json({ keys => [{ kid => 'after-cancel' }] }),
+    ));
+    is $f2->get->{keys}[0]{kid}, 'after-cancel', 'second caller receives the JWKS';
+    is $oidc->_jwks_inflight, undef, 'in-flight slot cleared after completion';
+}
+
+{
+    # Cancelling one of several coalesced callers leaves the others alone.
+    my $pending = Future->new;
+    my $http = Local::MockHTTP->new(_ok(_discovery()), $pending);
+    my $oidc = Net::Async::Zitadel::OIDC->new(
+        issuer => 'https://zitadel.example.com',
+        http   => $http,
+    );
+    $oidc->discovery_f->get;
+
+    my ($f1, $f2) = ($oidc->jwks_f, $oidc->jwks_f);
+    $f1->cancel;
+    ok !$f2->is_ready, 'surviving caller is still pending';
+    $pending->done(Local::Response->new(
+        is_success => 1, status_line => '200 OK',
+        decoded_content => encode_json({ keys => [{ kid => 'shared' }] }),
+    ));
+    is $f2->get->{keys}[0]{kid}, 'shared', 'surviving caller still gets the JWKS';
+}
+
+{
+    # Concurrent forced refreshes share one request.
+    my $pending = Future->new;
+    my $http = Local::MockHTTP->new(_ok(_discovery()), $pending);
+    my $oidc = Net::Async::Zitadel::OIDC->new(
+        issuer => 'https://zitadel.example.com',
+        http   => $http,
+    );
+    $oidc->discovery_f->get;
+
+    my @f = map { $oidc->jwks_f(force_refresh => 1) } 1 .. 3;
+    is scalar(grep { $_->{method} eq 'GET' } @{ $http->calls }), 2,
+        'three concurrent forced refreshes issue one JWKS request';
+    $pending->done(Local::Response->new(
+        is_success => 1, status_line => '200 OK',
+        decoded_content => encode_json({ keys => [{ kid => 'forced' }] }),
+    ));
+    is $_->get->{keys}[0]{kid}, 'forced', 'forced caller gets the JWKS' for @f;
+}
+
 done_testing;

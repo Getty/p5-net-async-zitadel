@@ -31,6 +31,10 @@ Revision history for Net-Async-Zitadel
       - users and organizations: lock_user_f, unlock_user_f,
         resend_email_verification_f, reactivate_org_f
     - MIME::Base64 is now declared as a runtime dependency.
+    - `jwks_f` survives a cancelled caller: every caller gets its own Future
+      derived from the shared fetch, so cancelling one no longer leaves a
+      cancelled Future in the in-flight slot for all later calls. Concurrent
+      `force_refresh` calls now share one request as well.
 
 0.001     2026-03-14 05:01:52Z
 
