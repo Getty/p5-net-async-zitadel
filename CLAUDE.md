@@ -68,7 +68,8 @@ try {
 ## Delegation
 
 Verhaltensrelevanten Code an den passenden Agenten delegieren statt selbst anfassen —
-Prinzip und Lane stehen in `.claude/rules/net-async-zitadel-rules.md`.
+der Delegations-Lock ist eine geteilte House-Rule (skilletor-Bundle `getty-cpan-dist@getty`);
+Lanes und Hazards stehen in `.claude/rules/net-async-zitadel-rules.md`.
 
 | Aufgabe | Agent |
 |---|---|
