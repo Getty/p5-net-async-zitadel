@@ -35,6 +35,11 @@ Revision history for Net-Async-Zitadel
       derived from the shared fetch, so cancelling one no longer leaves a
       cancelled Future in the in-flight slot for all later calls. Concurrent
       `force_refresh` calls now share one request as well.
+    - `verify_token_f` fetches the JWKS again only for a token that names an
+      unknown key, and at most once per `jwks_min_age` seconds (new attribute,
+      default 60, as in WWW::Zitadel::OIDC). Any other rejection - expired
+      token, wrong issuer or audience, bad signature or algorithm - fails with
+      its original error and no longer costs a request to Zitadel.
 
 0.001     2026-03-14 05:01:52Z
 

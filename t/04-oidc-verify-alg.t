@@ -117,15 +117,16 @@ for my $alg (qw(PS256 ES256)) {
     );
 }
 
-# The allow-list also holds on the second pass after the JWKS refresh.
+# An algorithm rejection is the token's own fault: it fails with its own
+# error and does not make the JWKS be fetched again.
 {
     my $oidc = _oidc();
     _rejected(
         $oidc->verify_token_f(_token('PS256')),
         qr/alg 'PS256' not in accepted_alg/,
-        'PS256 token is rejected by default after the JWKS refresh retry',
+        'PS256 token is rejected by default without a JWKS refresh',
     );
-    is _jwks_fetches($oidc), 2, 'the retry pass ran';
+    is _jwks_fetches($oidc), 1, 'no retry pass for an algorithm rejection';
 }
 
 # Callers widen the list with accepted_alg ...

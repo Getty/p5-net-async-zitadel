@@ -192,7 +192,7 @@ sub _discovery {
             my ($self, %args) = @_;
             $decode_calls++;
             push @seen_kids, $args{kid_keys}{keys}[0]{kid};
-            die "signature check failed" if $decode_calls == 1;
+            die "JWS: kid_keys lookup failed" if $decode_calls == 1;
             return { sub => 'user-1' };
         },
     );
@@ -562,5 +562,94 @@ sub _discovery {
     ));
     is $_->get->{keys}[0]{kid}, 'forced', 'forced caller gets the JWKS' for @f;
 }
+
+# --- Only an unknown kid refreshes the JWKS, and only once per jwks_min_age ---
+
+sub _jwks_gets { scalar grep { $_->{method} eq 'GET' } @{ $_[0]->calls } }
+
+{
+    # An expired token is the token's own fault: no second JWKS request.
+    my $http = Local::MockHTTP->new(
+        _ok(_discovery()),
+        _ok({ keys => [{ kid => 'k1' }] }),
+    );
+    my $oidc = Local::MockOIDC->new(
+        issuer  => 'https://zitadel.example.com',
+        http    => $http,
+        decoder => sub { die "JWT: exp claim check failed\n" },
+    );
+
+    my $f = $oidc->verify_token_f('expired');
+    ok $f->is_failed, 'expired token is rejected';
+    like "" . $f->failure, qr/exp claim check failed/,
+        'rejection carries the original error';
+    is _jwks_gets($http), 2, 'no JWKS refresh (discovery + first JWKS only)';
+}
+
+{
+    # A bad signature surfaces its own error; no refresh is even attempted
+    # (the mock queue is empty, a refresh would die with a different error).
+    my $http = Local::MockHTTP->new(
+        _ok(_discovery()),
+        _ok({ keys => [{ kid => 'k1' }] }),
+    );
+    my $oidc = Local::MockOIDC->new(
+        issuer  => 'https://zitadel.example.com',
+        http    => $http,
+        decoder => sub { die "JWS: signature check failed\n" },
+    );
+    like "" . $oidc->verify_token_f('forged')->failure, qr/signature check failed/,
+        'bad signature surfaces its own error, not a JWKS error';
+}
+
+{
+    my $http = Local::MockHTTP->new(
+        _ok(_discovery()),
+        _ok({ keys => [{ kid => 'old' }] }),
+        _ok({ keys => [{ kid => 'new' }] }),
+    );
+    my $oidc = Local::MockOIDC->new(
+        issuer  => 'https://zitadel.example.com',
+        http    => $http,
+        decoder => sub {
+            my ($self, %args) = @_;
+            die "JWS: kid_keys lookup failed\n"
+                unless $args{kid_keys}{keys}[0]{kid} eq 'new';
+            return { sub => 'u' };
+        },
+    );
+
+    is_deeply $oidc->verify_token_f('t1')->get, { sub => 'u' },
+        'unknown kid: token verifies after the refresh';
+    is _jwks_gets($http), 3, 'exactly one JWKS refresh for the unknown kid';
+
+    # Second unknown kid right away: jwks_min_age has not passed.
+    $oidc->_jwks_cache({ keys => [{ kid => 'old' }] });
+    my $f = $oidc->verify_token_f('t2');
+    ok $f->is_failed, 'second unknown kid within jwks_min_age is rejected';
+    like "" . $f->failure, qr/kid_keys lookup failed/, 'with the original error';
+    is _jwks_gets($http), 3, 'and triggers no further JWKS request';
+}
+
+{
+    # jwks_min_age => 0 lifts the rate limit.
+    my $http = Local::MockHTTP->new(
+        _ok(_discovery()),
+        _ok({ keys => [{ kid => 'a' }] }),
+        _ok({ keys => [{ kid => 'b' }] }),
+        _ok({ keys => [{ kid => 'c' }] }),
+    );
+    my $oidc = Local::MockOIDC->new(
+        issuer       => 'https://zitadel.example.com',
+        http         => $http,
+        jwks_min_age => 0,
+        decoder      => sub { die "JWS: kid_keys lookup failed\n" },
+    );
+    my @results = map { $oidc->verify_token_f($_) } qw(t1 t2);
+    is _jwks_gets($http), 4, 'jwks_min_age => 0 refreshes on every unknown kid';
+}
+
+is(Net::Async::Zitadel::OIDC->new(issuer => 'https://z', http => 1)->jwks_min_age,
+    60, 'jwks_min_age defaults to 60 like WWW::Zitadel::OIDC');
 
 done_testing;
