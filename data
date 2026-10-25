@@ -1,0 +1,44 @@
+---
+claimed_at: 2026-10-25T01:13:23Z
+claimed_by: k4-k8
+class: standard
+completed: 2026-10-25T01:13:23Z
+created: 2026-10-06T19:19:21Z
+id: 4
+priority: high
+started: 2026-10-25T01:01:26Z
+status: done
+tags:
+- parity
+- twin
+- management-api
+- git
+- review-2026-10-06
+title: 'k1 is done, but its commit never reached main: 28 Management _f methods live
+  only on branch phase2-zitadel-batch'
+updated: 2026-10-25T01:13:23Z
+---
+
+k1 ("Sync from WWW-Zitadel 0.002: ... 28 new Management methods") is closed with the note "Commit 30e6825 ... prove -lr t green 320 tests". That commit exists, but only on the local branch `phase2-zitadel-batch`:
+
+    git branch -a --contains 30e6825     # -> phase2-zitadel-batch only
+    git log --oneline main..30e6825      # -> 30e6825 Mirror WWW-Zitadel 0.002 Management API (28 new _f methods)
+
+`main` has moved 12 commits past the merge base `2d213c6` without it. On `main` today:
+
+- `lib/Net/Async/Zitadel/Management.pm` has none of `update_user_grant_f`, `deactivate_user_grant_f`, `reactivate_user_grant_f`, `delete_user_grant_f`, the nine typed `create_*_idp_f`, `update_project_role_f`, `remove_project_role_f`, `create_saml_app_f`, `update_saml_app_f`, `create_api_app_f`, the six org-domain methods, `lock_user_f`, `unlock_user_f`, `resend_email_verification_f`, `reactivate_org_f` (`grep -n lock_user lib` is empty).
+- `t/04-management-sync-0002.t` (368 lines, 123 tests) does not exist.
+- `Changes` `{{$NEXT}}` only mentions the Error.pm split.
+
+So the twin on main is 28 methods behind `WWW::Zitadel::Management` although both boards read as if parity were reached (p5-www-zitadel k3 is the open counterpart on the sync board).
+
+`30e6825` touches `Changes`, `cpanfile`, `Management.pm` and adds the test file; main changed `Changes`, the facade and `Error*.pm` since, so only `Changes` should conflict.
+
+Done: `phase2-zitadel-batch` is merged or cherry-picked onto main, `prove -l t` is green including `t/04-management-sync-0002.t`, the `Changes` entry is in `{{$NEXT}}`, the stale branch is deleted, and p5-www-zitadel k3 can be closed.
+
+---
+Fleet review 2026-10-06 · kind: bug · confidence: verified
+
+Commit b3448ad (cherry-pick of 30e6825, Changes reflowed). Suite 361 ok. Old branch phase2-zitadel-batch NOT deleted (coordinator).
+
+Also found: the facade (Net::Async::Zitadel::oidc builder) passes neither jwks_ttl, discovery_ttl nor the new jwks_min_age to OIDC, so they cannot be set through the facade; not fixed (out of scope).
