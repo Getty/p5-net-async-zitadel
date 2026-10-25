@@ -40,6 +40,9 @@ Revision history for Net-Async-Zitadel
       default 60, as in WWW::Zitadel::OIDC). Any other rejection - expired
       token, wrong issuer or audience, bad signature or algorithm - fails with
       its original error and no longer costs a request to Zitadel.
+    - The default HTTP client now times out after 30 seconds instead of
+      waiting for ever on a server that never answers, and follows no
+      redirects, so the Authorization header is never resent elsewhere.
 
 0.001     2026-03-14 05:01:52Z
 

@@ -44,8 +44,16 @@ has http => (
     is      => 'lazy',
     builder => sub {
         my $self = shift;
+        # Net::Async::HTTP has no default timeout, so a server that never
+        # answers would leave every Future pending. Redirects are off: none
+        # is expected from Zitadel, and a followed one would resend the
+        # Authorization header. fail_on_error stays off because the clients
+        # turn non-2xx responses into typed errors themselves.
         my $http = Net::Async::HTTP->new(
-            user_agent => 'Net-Async-Zitadel/' . ($self->VERSION // '0'),
+            user_agent     => 'Net-Async-Zitadel/' . ($self->VERSION // '0'),
+            timeout        => 30,
+            max_redirects  => 0,
+            fail_on_error  => 0,
         );
         $self->add_child($http);
         return $http;
@@ -131,7 +139,12 @@ L</management>.
 
 =attr http
 
-Lazy-built L<Net::Async::HTTP> instance, added as a child notifier.
+Lazy-built L<Net::Async::HTTP> instance, added as a child notifier. The
+default client is built with C<timeout =E<gt> 30> (seconds per request),
+C<max_redirects =E<gt> 0> (a redirect is returned as the response, never
+followed, so the C<Authorization> header is not resent) and
+C<fail_on_error =E<gt> 0> (non-2xx responses reach the clients, which raise
+typed errors). Pass your own C<http> to change any of this.
 
 =attr oidc
 

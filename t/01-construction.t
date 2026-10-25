@@ -36,6 +36,23 @@ use Net::Async::Zitadel::Error;
         qr/requires a token/, 'facade management dies without token';
 }
 
+# The default HTTP client must not wait for ever on a silent server, and must
+# not follow a redirect (it would resend the Authorization header). Net::Async::HTTP
+# has no accessors for these, so the settings are read from the object itself.
+{
+    my $http = Net::Async::Zitadel->new(issuer => 'https://zitadel.example.com')->http;
+    isa_ok $http, 'Net::Async::HTTP';
+    is $http->{timeout},       30, 'default http client has a 30s timeout';
+    is $http->{max_redirects},  0, 'default http client follows no redirects';
+    ok defined $http->{fail_on_error} && !$http->{fail_on_error},
+        'default http client hands back non-2xx responses (fail_on_error off)';
+
+    my $mine = bless {}, 'Local::FakeHTTP';
+    is(Net::Async::Zitadel->new(
+        issuer => 'https://zitadel.example.com', http => $mine,
+    )->http, $mine, 'an injected http client is used untouched');
+}
+
 # OIDC requires issuer
 throws_ok { Net::Async::Zitadel::OIDC->new(http => bless {}, 'Local::FakeHTTP') }
     qr/required/, 'OIDC needs issuer';
