@@ -1,0 +1,38 @@
+---
+claimed_at: 2026-10-25T01:13:28Z
+claimed_by: k4-k8
+class: standard
+completed: 2026-10-25T01:13:28Z
+created: 2026-10-06T19:19:26Z
+id: 5
+priority: medium
+started: 2026-10-25T01:01:31Z
+status: done
+tags:
+- bug
+- async
+- oidc
+- review-2026-10-06
+title: 'jwks_f: a cancelled in-flight Future stays cached and is handed to every later
+  caller'
+updated: 2026-10-25T01:13:28Z
+---
+
+`lib/Net/Async/Zitadel/OIDC.pm:119-150` stores the pending JWKS Future in `_jwks_inflight` and clears it on success (line 140) and in `on_fail` (line 143). Cancellation triggers neither. If the only consumer cancels - a caller wrapping `verify_token_f` in `Future->wait_any` with a timeout, or dropping a request - the cancel propagates up into the stored Future, and from then on line 119 returns that cancelled Future to everyone.
+
+Reproduce with a mock `http` whose `GET` returns a pending Future:
+
+    my $f1 = $oidc->verify_token_f('x.y.z'); $f1->cancel;
+    $oidc->_jwks_inflight->is_cancelled   # 1
+    $oidc->jwks_f->is_cancelled           # 1 - and for every further call
+
+`verify_token_f` only recovers by accident: `then` on a cancelled Future (Future 0.52) runs the callback with no arguments, `_decode_jwt(kid_keys => undef)` dies, and the retry path forces a refresh. With `no_retry => 1`, and for direct `jwks_f` callers, the object stays broken until something forces a refresh.
+
+Related in the same function: forced refreshes are never coalesced (`$force` skips both the read at line 119 and the store at line 150), so N concurrent rejected tokens start N JWKS fetches.
+
+Done: clear the slot with `on_cancel` too (or store a `without_cancel` copy and hand each caller its own derived Future); coalesce forced refreshes as well; a test cancels the first caller and asserts the second gets a live Future and exactly one new request.
+
+---
+Fleet review 2026-10-06 · kind: bug · confidence: verified
+
+Commit cce6fd7. Red first (cancelled Future handed to 2nd caller), then green. Suite 371 ok.
