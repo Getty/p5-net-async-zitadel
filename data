@@ -1,0 +1,29 @@
+---
+claimed_at: 2026-10-25T01:13:38Z
+claimed_by: k4-k8
+class: standard
+completed: 2026-10-25T01:13:38Z
+created: 2026-10-06T19:19:35Z
+id: 7
+priority: medium
+started: 2026-10-25T01:01:41Z
+status: done
+tags:
+- bug
+- async
+- http
+- review-2026-10-06
+title: Facade builds Net::Async::HTTP without a timeout (and with redirects on)
+updated: 2026-10-25T01:13:38Z
+---
+
+`lib/Net/Async/Zitadel.pm:47-49` creates the shared client as `Net::Async::HTTP->new( user_agent => ... )` and nothing else. Net::Async::HTTP applies no timeout unless one is given ("if not supplied then no default will be applied, and no timeout will take place"), so a Zitadel that accepts the connection and never answers leaves every `_f` Future pending for ever - discovery, JWKS and with them every `verify_token_f` that coalesced onto the in-flight fetch. The sync twin has 30 s (`WWW::Zitadel`, `LWP::UserAgent->new(timeout => 30)`); the Authentik and Keycloak twins pass `timeout => 30, max_redirects => 0, fail_on_error => 0` (`p5-net-async-keycloak/lib/Net/Async/Keycloak.pm:106`).
+
+Second half, not reproduced: `max_redirects` is left at Net::Async::HTTP's default of 3, so a redirect answer to a Management call is followed with the same request, including the `Authorization: Bearer <PAT>` header. The siblings switch redirects off for exactly that reason.
+
+Done: the default client is built with `timeout => 30` (or `stall_timeout`), `max_redirects => 0`; POD of `http` says what the default is; a test asserts both settings on the built object.
+
+---
+Fleet review 2026-10-06 · kind: bug · confidence: verified
+
+Commit 13541de. timeout 30, max_redirects 0, fail_on_error 0 (measured: clients check is_success on responses; NAH default is falsy, explicit 0 kept). Test reads the settings from the object hash (NAH has no accessors). Red first. Suite 387 ok.
