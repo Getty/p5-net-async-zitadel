@@ -1,0 +1,30 @@
+---
+claimed_at: 2026-10-25T01:13:33Z
+claimed_by: k4-k8
+class: standard
+completed: 2026-10-25T01:13:33Z
+created: 2026-10-06T19:19:31Z
+id: 6
+priority: medium
+started: 2026-10-25T01:01:36Z
+status: done
+tags:
+- bug
+- security
+- oidc
+- twin
+- review-2026-10-06
+title: verify_token_f refetches the JWKS on every rejected token
+updated: 2026-10-25T01:13:33Z
+---
+
+`lib/Net/Async/Zitadel/OIDC.pm:179-195`: after *any* decode failure (`$@` true and no `no_retry`) the code calls `jwks_f(force_refresh => 1)`. Expired tokens, wrong issuer or audience, bad signatures and garbage all cost one HTTP request to Zitadel each, uncoalesced. A client that sends invalid bearer tokens can make the service flood its IdP; and when that refresh fails the caller gets `JWKS fetch failed` instead of the reason the token was rejected.
+
+`Net::Async::Authentik::OIDC` and `WWW::Authentik::OIDC` refresh only on `kid_keys lookup failed` and at most every `jwks_min_age` seconds.
+
+Done: retry only for an unknown kid, rate-limited; other failures fail the Future with the original error. Tests: expired token -> no second JWKS request; unknown kid -> exactly one. Fix together with p5-www-zitadel.
+
+---
+Fleet review 2026-10-06 · kind: bug · confidence: verified
+
+Commit 16a5486. Mirrors WWW::Zitadel::OIDC (jwks_min_age 60, refresh only on 'kid_keys lookup failed'). Red first. t/04-oidc-verify-alg.t asserted the old refresh-on-any-error and was changed to expect no refresh. Suite 382 ok. Twin already has this behavior.
