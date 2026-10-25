@@ -1,0 +1,20 @@
+---
+claimed_at: 2026-10-25T00:53:29Z
+claimed_by: opus-hub
+class: standard
+completed: 2026-10-25T00:53:29Z
+created: 2026-09-14T05:10:54Z
+id: 3
+priority: medium
+started: 2026-09-14T05:11:07Z
+status: done
+tags:
+- release
+- refactor
+title: 'Error.pm: split into one package per file (mirror www-zitadel #4)'
+updated: 2026-10-25T00:53:29Z
+---
+
+Net::Async::Zitadel::Error::{Validation,Network,API} in eigene Dateien gesplittet (versionless), Basis laedt sie weiter. Commit 819026c. Gekoppelt an p5-www-zitadel #4. prove -lr t gruen (209), dzil build warnungsfrei.
+
+Erledigt in Commit 819026c, gespiegelt von www-zitadel #4. prove -lr t gruen (209), dzil build warnungsfrei.
