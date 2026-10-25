@@ -1,0 +1,27 @@
+---
+claimed_at: 2026-10-25T01:13:44Z
+claimed_by: k4-k8
+class: standard
+completed: 2026-10-25T01:13:44Z
+created: 2026-10-06T19:19:40Z
+id: 8
+priority: low
+started: 2026-10-25T01:01:47Z
+status: done
+tags:
+- hygiene
+- cpanfile
+- tls
+- review-2026-10-06
+title: 'cpanfile: IO::Async::SSL is not declared'
+updated: 2026-10-25T01:13:44Z
+---
+
+`cpanfile` lists `Net::Async::HTTP` and `IO::Async` but not `IO::Async::SSL`, which Net::Async::HTTP loads at runtime for every `https://` request. Every real Zitadel issuer is https, so a fresh install fails on the first call. The sibling `p5-net-async-authentik/cpanfile` declares it.
+
+Done: `requires 'IO::Async::SSL';` in `cpanfile`, Changes line.
+
+---
+Fleet review 2026-10-06 · kind: hygiene · confidence: verified
+
+Commit 2ba7249. cpanfile + Changes line. Suite 387 ok.
