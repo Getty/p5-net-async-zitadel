@@ -1,6 +1,7 @@
 requires 'Moo';
 requires 'Net::Async::HTTP';
 requires 'IO::Async';
+requires 'IO::Async::SSL';
 requires 'Future';
 requires 'JSON::MaybeXS';
 requires 'Crypt::JWT';

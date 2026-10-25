@@ -43,6 +43,8 @@ Revision history for Net-Async-Zitadel
     - The default HTTP client now times out after 30 seconds instead of
       waiting for ever on a server that never answers, and follows no
       redirects, so the Authorization header is never resent elsewhere.
+    - IO::Async::SSL is now declared as a dependency; Net::Async::HTTP needs
+      it for every https:// request, so a fresh install failed on first use.
 
 0.001     2026-03-14 05:01:52Z
 
