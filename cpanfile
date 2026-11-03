@@ -1,18 +1,18 @@
-requires 'Moo';
-requires 'Net::Async::HTTP';
+requires 'Crypt::JWT';
+requires 'Future';
+requires 'HTTP::Request';
 requires 'IO::Async';
 requires 'IO::Async::SSL';
-requires 'Future';
 requires 'JSON::MaybeXS';
-requires 'Crypt::JWT';
-requires 'HTTP::Request';
 requires 'MIME::Base64';
-requires 'URI';
+requires 'Moo';
 requires 'namespace::clean';
+requires 'Net::Async::HTTP';
+requires 'URI';
 
 on test => sub {
-    requires 'Test::More';
-    requires 'Test::Exception';
-    requires 'Crypt::PK::RSA';
     requires 'Crypt::PK::ECC';
+    requires 'Crypt::PK::RSA';
+    requires 'Test::Exception';
+    requires 'Test::More';
 };
