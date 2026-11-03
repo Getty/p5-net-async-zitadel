@@ -2,6 +2,8 @@ package Net::Async::Zitadel::Error::Network;
 
 # ABSTRACT: Raised when an OIDC endpoint HTTP request fails
 
+our $VERSION = '0.002';
+
 use Moo;
 extends 'Net::Async::Zitadel::Error';
 use namespace::clean;

@@ -2,6 +2,8 @@ package Net::Async::Zitadel::Error::Validation;
 
 # ABSTRACT: Raised for missing or invalid arguments before any HTTP call
 
+our $VERSION = '0.002';
+
 use Moo;
 extends 'Net::Async::Zitadel::Error';
 use namespace::clean;

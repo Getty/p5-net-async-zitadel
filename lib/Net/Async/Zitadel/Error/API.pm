@@ -2,6 +2,8 @@ package Net::Async::Zitadel::Error::API;
 
 # ABSTRACT: Raised when the Management API returns a non-2xx response
 
+our $VERSION = '0.002';
+
 use Moo;
 extends 'Net::Async::Zitadel::Error';
 use namespace::clean;
