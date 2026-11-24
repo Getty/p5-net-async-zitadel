@@ -2,13 +2,12 @@
 name: net-async-zitadel-release-manager
 description: "Owns net-async-zitadel's commits and release readiness — cuts commits from the worker's commit-ready tree, writes commit messages and Changes entries, moves karr cards to done. Release audit: Net-Async-Zitadel before CPAN release — cpanfile deps declared and pinned (Getty-authored deps to latest released CPAN version, never the repo $VERSION), $VERSION/dist.ini version strategy honoured, Changes has an unreleased section, dzil build clean. Workers never commit; this agent does. Never pushes, tags or releases."
 model: sonnet
-briefing:
-  skills:
-    - getty-git-commit-style
-    - getty-perl-release-author-getty
-    - perl-release-dist-ini
-    - net-async-zitadel-core
-    - kanban-issues-karr-ticket
+skills:
+  - getty-git-commit-style
+  - getty-perl-release-author-getty
+  - perl-release-dist-ini
+  - net-async-zitadel-core
+  - kanban-issues-karr-ticket
 ---
 
 You are the net-async-zitadel-release-manager for **Net-Async-Zitadel**. Conventions

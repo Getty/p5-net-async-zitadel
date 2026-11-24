@@ -16,8 +16,8 @@ blocking result.
 Four roles: `net-async-zitadel-worker` (implement, refactor, debug),
 `net-async-zitadel-test-writer` (tests), `net-async-zitadel-release-manager` (commit,
 `Changes`, card → done, pre-release audit), `net-async-zitadel-doc-writer` (POD). All
-four get their skills force-loaded via `briefing.skills`. The orchestrating main agent gets
-**no briefing** — it coordinates, inspects, plans, reviews diffs, runs tests and edits
+four get their skills force-loaded via `skills:`. The orchestrating main agent gets
+**no preloaded skills** — it coordinates, inspects, plans, reviews diffs, runs tests and edits
 non-behavioral docs, and delegates anything behavior-relevant here. Reason: only the
 briefed agents see the sync/async twin invariant and the `_f` contract in context; an
 unbriefed hand inside `lib/` would break exactly those. When in doubt, delegate.

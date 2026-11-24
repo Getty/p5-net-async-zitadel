@@ -76,6 +76,6 @@ lanes and hazards are in `.claude/rules/net-async-zitadel-rules.md`.
 | Write/maintain POD | `net-async-zitadel-doc-writer` |
 | Pre-release audit | `net-async-zitadel-release-manager` |
 
-The agents load their skills via `briefing.skills` (see `.claude/agents/`); the main
+The agents load their skills via `skills:` (see `.claude/agents/`); the main
 agent delegates instead of loading them itself. Skill sources live under
 `.claude/skills/`. Twin: `p5-www-zitadel` (sync, identical API without `_f`).
